@@ -1,11 +1,27 @@
-import { Play, Radio, RotateCcw, Save, SaveAll, Square } from 'lucide-react';
-import type { PlaybackState } from '../../types/workbench';
+import {
+  Columns2,
+  FilePlus2,
+  FolderOpen,
+  Home,
+  MoreVertical,
+  PanelTopClose,
+  Play,
+  Radio,
+  Rows2,
+  RotateCcw,
+  Save,
+  SaveAll,
+  Square,
+} from 'lucide-react';
+import type { PlaybackState, StudioSettings } from '../../types/workbench';
 
 type PlaybackControlsProps = {
   playback: PlaybackState;
+  settings: StudioSettings;
   activeFileName: string | null;
   includedCount: number;
   dirtyCount: number;
+  panelCount: number;
   onPlayActive: () => void;
   onPlayAll: () => void;
   onStop: () => void;
@@ -13,6 +29,13 @@ type PlaybackControlsProps = {
   onSaveActive: () => void;
   onSaveAll: () => void;
   onSaveWorkspace: () => void;
+  onGoHome: () => void;
+  onNewProject: () => void;
+  onOpenProject: () => void;
+  onSplitVertical: () => void;
+  onSplitHorizontal: () => void;
+  onClosePanel: () => void;
+  onToggleKeepSelectionOnClose: (enabled: boolean) => void;
   canPlayActive: boolean;
   canPlayAll: boolean;
   canSaveActive: boolean;
@@ -21,9 +44,11 @@ type PlaybackControlsProps = {
 
 export const PlaybackControls = ({
   playback,
+  settings,
   activeFileName,
   includedCount,
   dirtyCount,
+  panelCount,
   onPlayActive,
   onPlayAll,
   onStop,
@@ -31,6 +56,13 @@ export const PlaybackControls = ({
   onSaveActive,
   onSaveAll,
   onSaveWorkspace,
+  onGoHome,
+  onNewProject,
+  onOpenProject,
+  onSplitVertical,
+  onSplitHorizontal,
+  onClosePanel,
+  onToggleKeepSelectionOnClose,
   canPlayActive,
   canPlayAll,
   canSaveActive,
@@ -40,6 +72,24 @@ export const PlaybackControls = ({
 
   return (
     <header className="topbar">
+      <details className="menu-dropdown">
+        <summary>File</summary>
+        <div className="menu-panel">
+          <button type="button" onClick={onGoHome}>
+            <Home size={15} aria-hidden="true" />
+            Main Window
+          </button>
+          <button type="button" onClick={onNewProject}>
+            <FilePlus2 size={15} aria-hidden="true" />
+            New Project
+          </button>
+          <button type="button" onClick={onOpenProject}>
+            <FolderOpen size={15} aria-hidden="true" />
+            Open Project
+          </button>
+        </div>
+      </details>
+
       <div className="transport-group">
         <button type="button" className="transport-button" onClick={onPlayActive} disabled={!canPlayActive || isBusy}>
           <Play size={17} aria-hidden="true" />
@@ -66,6 +116,24 @@ export const PlaybackControls = ({
           : playback.status}
       </div>
 
+      <div className="editor-actions">
+        <button type="button" className="transport-icon" onClick={onSplitVertical} title="Split vertically">
+          <Columns2 size={17} aria-hidden="true" />
+        </button>
+        <button type="button" className="transport-icon" onClick={onSplitHorizontal} title="Split horizontally">
+          <Rows2 size={17} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="transport-icon"
+          onClick={onClosePanel}
+          disabled={panelCount <= 1}
+          title="Close active panel"
+        >
+          <PanelTopClose size={17} aria-hidden="true" />
+        </button>
+      </div>
+
       <div className="save-group">
         <button type="button" className="toolbar-button" onClick={onSaveActive} disabled={!canSaveActive}>
           <Save size={16} aria-hidden="true" />
@@ -76,10 +144,25 @@ export const PlaybackControls = ({
           Save All
           {dirtyCount > 0 ? <span className="count-badge">{dirtyCount}</span> : null}
         </button>
-        <button type="button" className="toolbar-button" onClick={onSaveWorkspace}>
-          <SaveAll size={16} aria-hidden="true" />
-          Workspace
-        </button>
+        <details className="icon-menu-dropdown">
+          <summary title="More actions">
+            <MoreVertical size={17} aria-hidden="true" />
+          </summary>
+          <div className="menu-panel align-right">
+            <button type="button" onClick={onSaveWorkspace}>
+              <SaveAll size={15} aria-hidden="true" />
+              Save Workspace
+            </button>
+            <label className="menu-check">
+              <input
+                type="checkbox"
+                checked={settings.keepPlayAllSelectionOnClose}
+                onChange={(event) => onToggleKeepSelectionOnClose(event.target.checked)}
+              />
+              Keep Play All selection on close
+            </label>
+          </div>
+        </details>
       </div>
     </header>
   );

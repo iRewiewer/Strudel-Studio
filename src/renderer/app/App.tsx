@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type {
-  OpenFileState,
-  ProjectFile,
-  ProjectSnapshot,
-  WorkspaceSnapshot,
-} from '../../shared/types';
+import type { OpenFileState, ProjectFile, ProjectSessionSnapshot, ProjectSnapshot, RecentProject } from '../../shared/types';
 import { EditorPane } from '../features/editor/EditorPane';
 import { FileExplorer } from '../features/files/FileExplorer';
 import { PlaybackControls } from '../features/playback/PlaybackControls';
@@ -12,15 +7,32 @@ import { InspectorPanel } from '../features/sidebar-right/InspectorPanel';
 import { WelcomeScreen } from '../features/workspace/WelcomeScreen';
 import {
   createStrudelFile,
-  loadWorkspaceFile,
+  listRecentProjects,
+  newProjectFolder,
   openProjectFolder,
+  openRecentProject,
   readProjectFile,
   saveProjectFile,
   saveWorkspaceFile,
 } from '../services/filesystem/studioFilesystem';
 import { StrudelPlaybackService } from '../services/strudel/StrudelPlaybackService';
-import type { EditorFile, PlaybackState, WorkbenchProject } from '../types/workbench';
+import type {
+  EditorFile,
+  EditorPanelState,
+  EditorSplitDirection,
+  PlaybackState,
+  StudioSettings,
+  WorkbenchProject,
+} from '../types/workbench';
 import { stoppedPlaybackState } from '../types/workbench';
+
+const defaultPanelId = 'panel-1';
+const sidebarMinWidth = 220;
+const sidebarMaxWidth = 520;
+
+const defaultSettings: StudioSettings = {
+  keepPlayAllSelectionOnClose: false,
+};
 
 const toForwardSlashPath = (value: string): string => value.replaceAll('\\', '/');
 
@@ -41,12 +53,6 @@ const normalizeNewFileName = (value: string): string => {
     return '';
   }
   return getExtension(trimmed) ? trimmed : `${trimmed}.strudel`;
-};
-
-const getPlaybackSignature = (files: EditorFile[]): string => {
-  return files
-    .map((file) => `${file.relativePath}\u0000${file.includedInPlayAll}\u0000${file.content}`)
-    .join('\u0001');
 };
 
 const findProjectFile = (project: ProjectSnapshot, relativePath: string): ProjectFile | null => {
@@ -77,10 +83,10 @@ const createEditorFile = (
   };
 };
 
-const createEditorFilesFromWorkspace = (workspace: WorkspaceSnapshot): Record<string, EditorFile> => {
-  return workspace.openFiles.reduce<Record<string, EditorFile>>((accumulator, file: OpenFileState) => {
+const createEditorFilesFromSession = (session: ProjectSessionSnapshot): Record<string, EditorFile> => {
+  return session.openFiles.reduce<Record<string, EditorFile>>((accumulator, file: OpenFileState) => {
     accumulator[file.relativePath] = createEditorFile(
-      workspace.project,
+      session.project,
       file.relativePath,
       file.content,
       file.includedInPlayAll,
@@ -89,75 +95,149 @@ const createEditorFilesFromWorkspace = (workspace: WorkspaceSnapshot): Record<st
   }, {});
 };
 
+const getPlaybackSignature = (files: EditorFile[]): string => {
+  return files
+    .map((file) => `${file.relativePath}\u0000${file.includedInPlayAll}\u0000${file.content}`)
+    .join('\u0001');
+};
+
+const clamp = (value: number, min: number, max: number): number => {
+  return Math.min(Math.max(value, min), max);
+};
+
 export const App = (): JSX.Element => {
   const playbackService = useRef(new StrudelPlaybackService());
   const lastEvaluatedPlaybackSignature = useRef('');
   const [project, setProject] = useState<WorkbenchProject | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [openFilesByPath, setOpenFilesByPath] = useState<Record<string, EditorFile>>({});
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
+  const [editorPanels, setEditorPanels] = useState<EditorPanelState[]>([
+    { id: defaultPanelId, filePath: null },
+  ]);
+  const [activePanelId, setActivePanelId] = useState(defaultPanelId);
+  const [splitDirection, setSplitDirection] = useState<EditorSplitDirection>('vertical');
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(300);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(280);
+  const [settings, setSettings] = useState<StudioSettings>(defaultSettings);
   const [newFileName, setNewFileName] = useState('');
   const [busy, setBusy] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [playback, setPlayback] = useState<PlaybackState>(stoppedPlaybackState);
 
+  const allTrackedFiles = useMemo(() => Object.values(openFilesByPath), [openFilesByPath]);
   const openFiles = useMemo(
-    () => Object.values(openFilesByPath).filter((file) => file.isOpen),
-    [openFilesByPath],
+    () => allTrackedFiles.filter((file) => file.isOpen),
+    [allTrackedFiles],
   );
+  const includedFiles = useMemo(
+    () => allTrackedFiles.filter((file) => file.includedInPlayAll),
+    [allTrackedFiles],
+  );
+  const dirtyFiles = useMemo(
+    () => allTrackedFiles.filter((file) => file.dirty),
+    [allTrackedFiles],
+  );
+  const activePanel = editorPanels.find((panel) => panel.id === activePanelId) ?? editorPanels[0] ?? null;
+  const activeFilePath = activePanel?.filePath ?? null;
   const activeFile = activeFilePath ? openFilesByPath[activeFilePath] ?? null : null;
-  const includedFiles = openFiles.filter((file) => file.includedInPlayAll);
-  const dirtyFiles = openFiles.filter((file) => file.dirty);
+
+  const refreshRecentProjects = useCallback(async (): Promise<void> => {
+    setRecentProjects(await listRecentProjects());
+  }, []);
+
+  useEffect(() => {
+    void refreshRecentProjects().catch((error) => {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    });
+  }, [refreshRecentProjects]);
 
   useEffect(() => {
     playbackService.current.setSampleManifestUrl(project?.sampleServer?.manifestUrl ?? null);
   }, [project?.sampleServer?.manifestUrl]);
 
-  const resetWorkbench = useCallback(async (snapshot: ProjectSnapshot): Promise<void> => {
-    await playbackService.current.stop();
-    setProject(snapshot);
-    setWorkspacePath(null);
-    setOpenFilesByPath({});
-    setActiveFilePath(null);
-    setPlayback(stoppedPlaybackState);
-    setOperationError(null);
+  const setPanelFile = useCallback((panelId: string, relativePath: string | null): void => {
+    setActivePanelId(panelId);
+    setEditorPanels((previous) =>
+      previous.map((panel) => (panel.id === panelId ? { ...panel, filePath: relativePath } : panel)),
+    );
   }, []);
+
+  const applySession = useCallback(
+    async (session: ProjectSessionSnapshot): Promise<void> => {
+      await playbackService.current.stop();
+      lastEvaluatedPlaybackSignature.current = '';
+      const filesByPath = createEditorFilesFromSession(session);
+      const firstOpenFilePath = Object.values(filesByPath)[0]?.relativePath ?? null;
+      const activePath = session.activeFilePath && filesByPath[session.activeFilePath]
+        ? session.activeFilePath
+        : firstOpenFilePath;
+
+      setProject(session.project);
+      setWorkspacePath(session.workspacePath);
+      setOpenFilesByPath(filesByPath);
+      setEditorPanels([{ id: defaultPanelId, filePath: activePath }]);
+      setActivePanelId(defaultPanelId);
+      setSplitDirection('vertical');
+      setPlayback(stoppedPlaybackState);
+      setOperationError(null);
+      await refreshRecentProjects();
+    },
+    [refreshRecentProjects],
+  );
+
+  const handleNewProject = useCallback(async (): Promise<void> => {
+    setBusy(true);
+    try {
+      const session = await newProjectFolder();
+      if (session) {
+        await applySession(session);
+      }
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }, [applySession]);
 
   const handleOpenProject = useCallback(async (): Promise<void> => {
     setBusy(true);
     try {
-      const snapshot = await openProjectFolder();
-      if (snapshot) {
-        await resetWorkbench(snapshot);
+      const session = await openProjectFolder();
+      if (session) {
+        await applySession(session);
       }
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : String(error));
     } finally {
       setBusy(false);
     }
-  }, [resetWorkbench]);
+  }, [applySession]);
 
-  const handleLoadWorkspace = useCallback(async (): Promise<void> => {
-    setBusy(true);
-    try {
-      const workspace = await loadWorkspaceFile();
-      if (!workspace) {
-        return;
+  const handleOpenRecentProject = useCallback(
+    async (projectRoot: string): Promise<void> => {
+      setBusy(true);
+      try {
+        const session = await openRecentProject(projectRoot);
+        if (session) {
+          await applySession(session);
+        }
+      } catch (error) {
+        setOperationError(error instanceof Error ? error.message : String(error));
+      } finally {
+        setBusy(false);
       }
+    },
+    [applySession],
+  );
 
-      await playbackService.current.stop();
-      setProject(workspace.project);
-      setWorkspacePath(workspace.workspacePath);
-      setOpenFilesByPath(createEditorFilesFromWorkspace(workspace));
-      setActiveFilePath(workspace.activeFilePath);
-      setPlayback(stoppedPlaybackState);
-      setOperationError(null);
-    } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const handleGoHome = useCallback(async (): Promise<void> => {
+    await playbackService.current.stop();
+    lastEvaluatedPlaybackSignature.current = '';
+    setProject(null);
+    setPlayback(stoppedPlaybackState);
+    await refreshRecentProjects();
+  }, [refreshRecentProjects]);
 
   const openFile = useCallback(
     async (relativePath: string, includedInPlayAll = false): Promise<EditorFile | null> => {
@@ -167,19 +247,23 @@ export const App = (): JSX.Element => {
 
       const existing = openFilesByPath[relativePath];
       if (existing) {
-        const nextFile = { ...existing, isOpen: true, includedInPlayAll: existing.includedInPlayAll || includedInPlayAll };
+        const nextFile = {
+          ...existing,
+          isOpen: true,
+          includedInPlayAll: existing.includedInPlayAll || includedInPlayAll,
+        };
         setOpenFilesByPath((previous) => ({ ...previous, [relativePath]: nextFile }));
-        setActiveFilePath(relativePath);
+        setPanelFile(activePanelId, relativePath);
         return nextFile;
       }
 
       const content = await readProjectFile(project.rootPath, relativePath);
       const editorFile = createEditorFile(project, relativePath, content, includedInPlayAll);
       setOpenFilesByPath((previous) => ({ ...previous, [relativePath]: editorFile }));
-      setActiveFilePath(relativePath);
+      setPanelFile(activePanelId, relativePath);
       return editorFile;
     },
-    [openFilesByPath, project],
+    [activePanelId, openFilesByPath, project, setPanelFile],
   );
 
   const handleCreateFile = useCallback(async (): Promise<void> => {
@@ -198,7 +282,7 @@ export const App = (): JSX.Element => {
       setProject(snapshot);
       const createdFile = createEditorFile(snapshot, relativePath, '', true);
       setOpenFilesByPath((previous) => ({ ...previous, [relativePath]: createdFile }));
-      setActiveFilePath(relativePath);
+      setPanelFile(activePanelId, relativePath);
       setNewFileName('');
       setOperationError(null);
     } catch (error) {
@@ -206,7 +290,7 @@ export const App = (): JSX.Element => {
     } finally {
       setBusy(false);
     }
-  }, [newFileName, project]);
+  }, [activePanelId, newFileName, project, setPanelFile]);
 
   const handleOpenFile = useCallback(
     async (relativePath: string): Promise<void> => {
@@ -249,20 +333,44 @@ export const App = (): JSX.Element => {
     [openFile, openFilesByPath, project],
   );
 
+  const getReplacementOpenFilePath = useCallback(
+    (closedRelativePath: string): string | null => {
+      return openFiles.find((file) => file.relativePath !== closedRelativePath)?.relativePath ?? null;
+    },
+    [openFiles],
+  );
+
   const handleCloseFile = useCallback(
     (relativePath: string): void => {
+      const replacementPath = getReplacementOpenFilePath(relativePath);
       setOpenFilesByPath((previous) => {
+        const existing = previous[relativePath];
+        if (!existing) {
+          return previous;
+        }
+
+        if (settings.keepPlayAllSelectionOnClose) {
+          return {
+            ...previous,
+            [relativePath]: {
+              ...existing,
+              isOpen: false,
+            },
+          };
+        }
+
         const next = { ...previous };
         delete next[relativePath];
         return next;
       });
 
-      if (activeFilePath === relativePath) {
-        const remaining = openFiles.filter((file) => file.relativePath !== relativePath);
-        setActiveFilePath(remaining[0]?.relativePath ?? null);
-      }
+      setEditorPanels((previous) =>
+        previous.map((panel) =>
+          panel.filePath === relativePath ? { ...panel, filePath: replacementPath } : panel,
+        ),
+      );
     },
-    [activeFilePath, openFiles],
+    [getReplacementOpenFilePath, settings.keepPlayAllSelectionOnClose],
   );
 
   const handleChangeContent = useCallback((relativePath: string, content: string): void => {
@@ -338,20 +446,38 @@ export const App = (): JSX.Element => {
 
     try {
       await saveFiles(dirtyFiles);
+      const workspaceFiles = allTrackedFiles.filter((file) => file.isOpen || file.includedInPlayAll);
       const savedPath = await saveWorkspaceFile({
         projectRoot: project.rootPath,
         activeFilePath,
-        openFiles: openFiles.map((file) => ({
+        openFiles: workspaceFiles.map((file) => ({
           relativePath: file.relativePath,
           includedInPlayAll: file.includedInPlayAll,
         })),
       });
       setWorkspacePath(savedPath);
+      await refreshRecentProjects();
       setOperationError(null);
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : String(error));
     }
-  }, [activeFilePath, dirtyFiles, openFiles, project, saveFiles]);
+  }, [activeFilePath, allTrackedFiles, dirtyFiles, project, refreshRecentProjects, saveFiles]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          void handleSaveAll();
+        } else {
+          void handleSaveActive();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSaveActive, handleSaveAll]);
 
   const setPlayingState = useCallback((mode: 'single' | 'all', files: EditorFile[]): void => {
     setPlayback({
@@ -368,7 +494,7 @@ export const App = (): JSX.Element => {
       return;
     }
 
-    setPlayback({ ...playback, status: 'starting', error: null });
+    setPlayback((previous) => ({ ...previous, status: 'starting', error: null }));
     const result = await playbackService.current.playFiles([activeFile], true);
     if (result.ok) {
       lastEvaluatedPlaybackSignature.current = getPlaybackSignature([activeFile]);
@@ -382,15 +508,15 @@ export const App = (): JSX.Element => {
         error: result.error,
       });
     }
-  }, [activeFile, playback, setPlayingState]);
+  }, [activeFile, setPlayingState]);
 
   const handlePlayAll = useCallback(async (): Promise<void> => {
     if (includedFiles.length === 0) {
-      setOperationError('Check at least one open file for Play All.');
+      setOperationError('Check at least one file for Play All.');
       return;
     }
 
-    setPlayback({ ...playback, status: 'starting', error: null });
+    setPlayback((previous) => ({ ...previous, status: 'starting', error: null }));
     const result = await playbackService.current.playFiles(includedFiles, true);
     if (result.ok) {
       lastEvaluatedPlaybackSignature.current = getPlaybackSignature(includedFiles);
@@ -405,7 +531,7 @@ export const App = (): JSX.Element => {
         error: result.error,
       });
     }
-  }, [includedFiles, playback, setPlayingState]);
+  }, [includedFiles, setPlayingState]);
 
   const handleStop = useCallback(async (): Promise<void> => {
     await playbackService.current.stop();
@@ -425,13 +551,13 @@ export const App = (): JSX.Element => {
     }
 
     if (playback.mode === 'all') {
-      return openFiles.filter((file) => file.includedInPlayAll);
+      return includedFiles;
     }
 
     return playback.activeFilePaths
       .map((relativePath) => openFilesByPath[relativePath])
       .filter((file): file is EditorFile => Boolean(file));
-  }, [openFiles, openFilesByPath, playback.activeFilePaths, playback.mode, playback.status]);
+  }, [includedFiles, openFilesByPath, playback.activeFilePaths, playback.mode, playback.status]);
 
   const livePlaybackSignature = useMemo(() => {
     return getPlaybackSignature(livePlaybackFiles);
@@ -474,10 +600,68 @@ export const App = (): JSX.Element => {
     return () => window.clearTimeout(timeout);
   }, [livePlaybackFiles, livePlaybackSignature, playback.mode, playback.status, setPlayingState]);
 
+  const handleSplit = useCallback(
+    (direction: EditorSplitDirection): void => {
+      setSplitDirection(direction);
+      setEditorPanels((previous) => {
+        const nextPanelId = `panel-${Date.now()}`;
+        return [...previous, { id: nextPanelId, filePath: activeFilePath }];
+      });
+    },
+    [activeFilePath],
+  );
+
+  const handleClosePanel = useCallback((): void => {
+    if (editorPanels.length <= 1) {
+      return;
+    }
+
+    const activeIndex = editorPanels.findIndex((panel) => panel.id === activePanelId);
+    const nextPanels = editorPanels.filter((panel) => panel.id !== activePanelId);
+    const fallbackPanel = nextPanels[Math.max(0, activeIndex - 1)] ?? nextPanels[0];
+    setEditorPanels(nextPanels);
+    if (fallbackPanel) {
+      setActivePanelId(fallbackPanel.id);
+    }
+  }, [activePanelId, editorPanels]);
+
+  const beginSidebarResize = useCallback(
+    (side: 'left' | 'right', event: React.PointerEvent<HTMLDivElement>): void => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startLeft = leftSidebarWidth;
+      const startRight = rightSidebarWidth;
+
+      const handlePointerMove = (moveEvent: PointerEvent): void => {
+        if (side === 'left') {
+          setLeftSidebarWidth(clamp(startLeft + moveEvent.clientX - startX, sidebarMinWidth, sidebarMaxWidth));
+          return;
+        }
+
+        setRightSidebarWidth(clamp(startRight - (moveEvent.clientX - startX), sidebarMinWidth, sidebarMaxWidth));
+      };
+
+      const handlePointerUp = (): void => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    },
+    [leftSidebarWidth, rightSidebarWidth],
+  );
+
   if (!project) {
     return (
       <>
-        <WelcomeScreen onOpenProject={handleOpenProject} onLoadWorkspace={handleLoadWorkspace} busy={busy} />
+        <WelcomeScreen
+          recentProjects={recentProjects}
+          onNewProject={handleNewProject}
+          onOpenProject={handleOpenProject}
+          onOpenRecentProject={handleOpenRecentProject}
+          busy={busy}
+        />
         {operationError ? <div className="toast-error">{operationError}</div> : null}
       </>
     );
@@ -487,9 +671,11 @@ export const App = (): JSX.Element => {
     <div className="app-shell">
       <PlaybackControls
         playback={playback}
+        settings={settings}
         activeFileName={activeFile?.name ?? null}
         includedCount={includedFiles.length}
         dirtyCount={dirtyFiles.length}
+        panelCount={editorPanels.length}
         onPlayActive={handlePlayActive}
         onPlayAll={handlePlayAll}
         onStop={handleStop}
@@ -497,13 +683,27 @@ export const App = (): JSX.Element => {
         onSaveActive={handleSaveActive}
         onSaveAll={handleSaveAll}
         onSaveWorkspace={handleSaveWorkspace}
+        onGoHome={handleGoHome}
+        onNewProject={handleNewProject}
+        onOpenProject={handleOpenProject}
+        onSplitVertical={() => handleSplit('vertical')}
+        onSplitHorizontal={() => handleSplit('horizontal')}
+        onClosePanel={handleClosePanel}
+        onToggleKeepSelectionOnClose={(enabled) =>
+          setSettings((previous) => ({ ...previous, keepPlayAllSelectionOnClose: enabled }))
+        }
         canPlayActive={Boolean(activeFile)}
         canPlayAll={includedFiles.length > 0}
         canSaveActive={Boolean(activeFile?.dirty)}
         canSaveAll={dirtyFiles.length > 0}
       />
 
-      <div className="workspace-grid">
+      <div
+        className="workspace-grid"
+        style={{
+          gridTemplateColumns: `${leftSidebarWidth}px 6px minmax(0, 1fr) 6px ${rightSidebarWidth}px`,
+        }}
+      >
         <FileExplorer
           projectName={project.name}
           projectRoot={project.rootPath}
@@ -517,12 +717,27 @@ export const App = (): JSX.Element => {
           onToggleIncluded={handleToggleIncluded}
           onOpenProject={handleOpenProject}
         />
+        <div
+          className="resize-handle resize-handle-left"
+          role="separator"
+          aria-label="Resize left sidebar"
+          onPointerDown={(event) => beginSidebarResize('left', event)}
+        />
         <EditorPane
           openFiles={openFiles}
-          activeFile={activeFile}
-          onActivateFile={setActiveFilePath}
+          panels={editorPanels}
+          activePanelId={activePanelId}
+          splitDirection={splitDirection}
+          onActivatePanel={setActivePanelId}
+          onActivateFile={setPanelFile}
           onCloseFile={handleCloseFile}
           onChangeContent={handleChangeContent}
+        />
+        <div
+          className="resize-handle resize-handle-right"
+          role="separator"
+          aria-label="Resize right sidebar"
+          onPointerDown={(event) => beginSidebarResize('right', event)}
         />
         <InspectorPanel
           sampleServer={project.sampleServer}

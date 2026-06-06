@@ -1,12 +1,21 @@
-import { FolderOpen, Upload } from 'lucide-react';
+import { Clock3, FolderOpen, Plus } from 'lucide-react';
+import type { RecentProject } from '../../../shared/types';
 
 type WelcomeScreenProps = {
+  recentProjects: RecentProject[];
+  onNewProject: () => void;
   onOpenProject: () => void;
-  onLoadWorkspace: () => void;
+  onOpenRecentProject: (projectRoot: string) => void;
   busy: boolean;
 };
 
-export const WelcomeScreen = ({ onOpenProject, onLoadWorkspace, busy }: WelcomeScreenProps): JSX.Element => {
+export const WelcomeScreen = ({
+  recentProjects,
+  onNewProject,
+  onOpenProject,
+  onOpenRecentProject,
+  busy,
+}: WelcomeScreenProps): JSX.Element => {
   return (
     <main className="welcome-screen">
       <section className="welcome-copy">
@@ -16,16 +25,41 @@ export const WelcomeScreen = ({ onOpenProject, onLoadWorkspace, busy }: WelcomeS
           Work with real project files, keep multiple patterns open, and perform checked files together.
         </p>
         <div className="welcome-actions">
-          <button type="button" className="primary-action" onClick={onOpenProject} disabled={busy}>
+          <button type="button" className="primary-action" onClick={onNewProject} disabled={busy}>
+            <Plus size={18} aria-hidden="true" />
+            New Project
+          </button>
+          <button type="button" className="secondary-action" onClick={onOpenProject} disabled={busy}>
             <FolderOpen size={18} aria-hidden="true" />
             Open Project
           </button>
-          <button type="button" className="secondary-action" onClick={onLoadWorkspace} disabled={busy}>
-            <Upload size={18} aria-hidden="true" />
-            Load Workspace
-          </button>
         </div>
       </section>
+
+      <aside className="recent-panel" aria-label="Recent projects">
+        <div className="section-title">
+          <Clock3 size={16} aria-hidden="true" />
+          <h2>Recent Projects</h2>
+        </div>
+        {recentProjects.length > 0 ? (
+          <div className="recent-list">
+            {recentProjects.map((project) => (
+              <button
+                type="button"
+                key={project.rootPath}
+                className="recent-project"
+                onClick={() => onOpenRecentProject(project.rootPath)}
+                disabled={busy}
+              >
+                <span>{project.name}</span>
+                <small>{project.rootPath}</small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="detail-line">No recent projects yet.</p>
+        )}
+      </aside>
     </main>
   );
 };

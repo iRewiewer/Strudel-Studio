@@ -39,6 +39,21 @@ export type WorkspaceSnapshot = {
   workspacePath: string;
 };
 
+export type ProjectSessionSnapshot = {
+  project: ProjectSnapshot;
+  openFiles: OpenFileState[];
+  activeFilePath: string | null;
+  savedAt: string | null;
+  workspacePath: string | null;
+};
+
+export type RecentProject = {
+  rootPath: string;
+  name: string;
+  workspacePath: string;
+  lastOpenedAt: string;
+};
+
 export type WorkspaceFile = {
   version: 1;
   projectRoot: string;

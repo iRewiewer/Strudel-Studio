@@ -1,4 +1,4 @@
-import { initStrudel } from '@strudel/web';
+import { evalScope, initStrudel } from '@strudel/web';
 import type { StudioError } from '../../../shared/types';
 import {
   combineStrudelFiles,
@@ -11,6 +11,7 @@ type StrudelWindow = Window & {
   evaluate?: (source: string) => unknown | Promise<unknown>;
   hush?: () => unknown | Promise<unknown>;
   samples?: (source: string) => unknown | Promise<unknown>;
+  sliderWithID?: (id: string, value: number, min?: number, max?: number) => number;
 };
 
 export type PlaybackResult =
@@ -28,6 +29,7 @@ export class StrudelPlaybackService {
   private initPromise: Promise<void> | null = null;
   private sampleManifestUrl: string | null = null;
   private loadedSampleManifestUrl: string | null = null;
+  private sliderValues = new Map<string, number>();
 
   setSampleManifestUrl(manifestUrl: string | null): void {
     this.sampleManifestUrl = manifestUrl;
@@ -71,9 +73,14 @@ export class StrudelPlaybackService {
 
   private async ensureInitialized(): Promise<void> {
     if (!this.initPromise) {
+      const sliderWithID = this.sliderWithID;
+      (window as StrudelWindow).sliderWithID = sliderWithID;
       this.initPromise = Promise.resolve(
         initStrudel({
-          prebake: () => this.loadProjectSamples(),
+          prebake: async () => {
+            await evalScope({ sliderWithID });
+            await this.loadProjectSamples();
+          },
         }),
       ).then(() => undefined);
     }
@@ -100,4 +107,14 @@ export class StrudelPlaybackService {
     }
     return candidate;
   }
+
+  private sliderWithID = (id: string, value: number, min?: number, max?: number): number => {
+    const previous = this.sliderValues.get(id);
+    const next = previous ?? value;
+    const lower = min ?? Number.NEGATIVE_INFINITY;
+    const upper = max ?? Number.POSITIVE_INFINITY;
+    const clamped = Math.min(Math.max(next, lower), upper);
+    this.sliderValues.set(id, clamped);
+    return clamped;
+  };
 }

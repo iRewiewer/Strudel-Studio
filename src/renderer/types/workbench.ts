@@ -23,6 +23,17 @@ export type WorkbenchProject = ProjectSnapshot & {
   sampleServer: SampleServerInfo | null;
 };
 
+export type EditorSplitDirection = 'vertical' | 'horizontal';
+
+export type EditorPanelState = {
+  id: string;
+  filePath: string | null;
+};
+
+export type StudioSettings = {
+  keepPlayAllSelectionOnClose: boolean;
+};
+
 export const stoppedPlaybackState: PlaybackState = {
   status: 'stopped',
   mode: null,

@@ -1,14 +1,28 @@
 import type {
   CreateFileRequest,
   OpenFileState,
+  ProjectSessionSnapshot,
   ProjectSnapshot,
+  RecentProject,
   SaveFileRequest,
   SaveWorkspaceRequest,
   WorkspaceSnapshot,
 } from '../../../shared/types';
 
-export const openProjectFolder = async (): Promise<ProjectSnapshot | null> => {
+export const newProjectFolder = async (): Promise<ProjectSessionSnapshot | null> => {
+  return window.studio.newProjectFolder();
+};
+
+export const openProjectFolder = async (): Promise<ProjectSessionSnapshot | null> => {
   return window.studio.openProjectFolder();
+};
+
+export const openRecentProject = async (projectRoot: string): Promise<ProjectSessionSnapshot | null> => {
+  return window.studio.openRecentProject(projectRoot);
+};
+
+export const listRecentProjects = async (): Promise<RecentProject[]> => {
+  return window.studio.listRecentProjects();
 };
 
 export const createStrudelFile = async (request: CreateFileRequest): Promise<ProjectSnapshot> => {

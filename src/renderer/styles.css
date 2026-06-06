@@ -22,7 +22,8 @@ body,
 
 button,
 input,
-textarea {
+textarea,
+summary {
   font: inherit;
 }
 
@@ -33,11 +34,63 @@ button {
 .welcome-screen {
   min-height: 100%;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
   align-items: center;
+  gap: 56px;
   padding: 8vh 9vw;
   background:
     linear-gradient(135deg, rgba(128, 217, 119, 0.12), transparent 38%),
     linear-gradient(180deg, #151918 0%, #0f1211 100%);
+}
+
+.recent-panel {
+  align-self: stretch;
+  max-height: 620px;
+  padding: 20px;
+  border-left: 1px solid #2a322e;
+  background: rgba(18, 22, 20, 0.74);
+}
+
+.recent-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.recent-project {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 1px solid #323b36;
+  border-radius: 8px;
+  color: #dfe7dc;
+  background: #111513;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-project:hover {
+  border-color: #617068;
+  background: #202720;
+}
+
+.recent-project span,
+.recent-project small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-project span {
+  color: #f2f6ef;
+  font-weight: 700;
+}
+
+.recent-project small {
+  color: #86928a;
 }
 
 .welcome-copy {
@@ -137,16 +190,93 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(360px, 1fr) auto minmax(380px, 1fr);
+  grid-template-columns: auto minmax(330px, 1fr) auto auto minmax(260px, 1fr);
   align-items: center;
-  gap: 18px;
+  gap: 12px;
   padding: 10px 14px;
   border-bottom: 1px solid #28302c;
   background: #171b19;
 }
 
+.editor-actions,
 .save-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   justify-content: flex-end;
+}
+
+.menu-dropdown,
+.icon-menu-dropdown {
+  position: relative;
+}
+
+.menu-dropdown > summary,
+.icon-menu-dropdown > summary {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid #3a423d;
+  border-radius: 8px;
+  color: #f5f8f2;
+  background: #252b28;
+  cursor: pointer;
+  list-style: none;
+}
+
+.icon-menu-dropdown > summary {
+  width: 38px;
+  padding: 0;
+}
+
+.menu-dropdown > summary::-webkit-details-marker,
+.icon-menu-dropdown > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menu-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid #3a423d;
+  border-radius: 8px;
+  background: #171d1a;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.32);
+}
+
+.menu-panel.align-right {
+  right: 0;
+  left: auto;
+}
+
+.menu-panel button,
+.menu-check {
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: #dfe7dc;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-panel button:hover,
+.menu-check:hover {
+  background: #26302a;
+}
+
+.menu-check {
+  font-size: 0.86rem;
 }
 
 .transport-button,
@@ -212,7 +342,6 @@ button:disabled {
 .workspace-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr) 280px;
 }
 
 .sidebar {
@@ -223,11 +352,22 @@ button:disabled {
 }
 
 .sidebar-left {
-  border-right: 1px solid #28302c;
+  border-right: 0;
 }
 
 .sidebar-right {
-  border-left: 1px solid #28302c;
+  border-left: 0;
+}
+
+.resize-handle {
+  min-height: 0;
+  background: #28302c;
+  cursor: col-resize;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: #95d988;
 }
 
 .sidebar-heading,
@@ -363,12 +503,35 @@ button:disabled {
   background: #f0ba67;
 }
 
+.editor-workspace {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  gap: 1px;
+  background: #28302c;
+}
+
+.editor-workspace.split-vertical {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+.editor-workspace.split-horizontal {
+  grid-auto-flow: row;
+  grid-auto-rows: minmax(0, 1fr);
+}
+
 .editor-shell {
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: 42px minmax(0, 1fr);
   background: #0f1211;
+}
+
+.editor-shell.is-active-panel {
+  outline: 1px solid rgba(149, 217, 136, 0.42);
+  outline-offset: -1px;
 }
 
 .tab-strip {
@@ -426,8 +589,6 @@ button:disabled {
 .code-editor {
   width: 100%;
   height: 100%;
-  resize: none;
-  padding: 22px;
   border: 1px solid transparent;
   color: #f2f6ef;
   background: #0f1211;
@@ -436,6 +597,26 @@ button:disabled {
   font-size: 15px;
   line-height: 1.62;
   tab-size: 2;
+}
+
+.code-editor .cm-editor {
+  height: 100%;
+  background: #0f1211;
+}
+
+.code-editor .cm-scroller {
+  font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+  font-size: 15px;
+  line-height: 1.62;
+}
+
+.code-editor .cm-content {
+  padding: 18px 0;
+}
+
+.code-editor .cm-gutters {
+  background: #0f1211;
+  border-right: 1px solid #28302c;
 }
 
 .empty-editor {
@@ -493,6 +674,16 @@ button:disabled {
 }
 
 @media (max-width: 1120px) {
+  .welcome-screen {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .recent-panel {
+    max-height: 280px;
+    border-top: 1px solid #2a322e;
+    border-left: 0;
+  }
+
   .topbar {
     grid-template-columns: minmax(0, 1fr);
     height: auto;
@@ -503,16 +694,21 @@ button:disabled {
   }
 
   .save-group,
+  .editor-actions,
   .transport-group {
     justify-content: center;
     flex-wrap: wrap;
   }
 
   .workspace-grid {
-    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-columns: 260px 6px minmax(0, 1fr) 0 0 !important;
   }
 
   .sidebar-right {
+    display: none;
+  }
+
+  .resize-handle-right {
     display: none;
   }
 }
