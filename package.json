@@ -1,0 +1,125 @@
+{
+  "name": "strudel-studio",
+  "productName": "Strudel Studio",
+  "version": "0.1.0",
+  "description": "Local-first desktop studio for Strudel live coding.",
+  "author": "Strudel Studio contributors",
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "main": "out/main/main.js",
+  "desktopName": "studio.strudel.StrudelStudio.desktop",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "npm run build:app",
+    "build:app": "tsc --noEmit && electron-vite build",
+    "package": "npm run build:app && electron-builder",
+    "package:dir": "npm run build:app && electron-builder --dir",
+    "package:win": "npm run build:app && electron-builder --win --x64",
+    "package:mac": "npm run build:app && electron-builder --mac --x64 --arm64",
+    "package:linux": "npm run build:app && electron-builder --linux --x64",
+    "package:all": "npm run build:app && electron-builder --win --mac --linux --x64",
+    "preview": "electron-vite preview",
+    "lint:types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@strudel/web": "^1.3.0",
+    "@types/node": "^20.14.10",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.2.1",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  },
+  "build": {
+    "appId": "studio.strudel.app",
+    "productName": "Strudel Studio",
+    "copyright": "Copyright © 2026 Strudel Studio contributors",
+    "asar": true,
+    "npmRebuild": false,
+    "directories": {
+      "output": "build",
+      "buildResources": "resources"
+    },
+    "files": [
+      "out/**/*",
+      "package.json"
+    ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "artifactName": "${productName}-Setup-${version}-${os}-${arch}.${ext}",
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Strudel Studio"
+    },
+    "portable": {
+      "artifactName": "${productName}-Portable-${version}-${os}-${arch}.${ext}"
+    },
+    "mac": {
+      "category": "public.app-category.music",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "sign": false
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "AudioVideo",
+      "synopsis": "Local-first desktop studio for Strudel live coding.",
+      "description": "Strudel Studio organizes Strudel code as local files and workspaces with multi-file playback.",
+      "maintainer": "Strudel Studio contributors"
+    }
+  }
+}
