@@ -16,6 +16,11 @@ import {
   saveWorkspaceFile,
 } from '../services/filesystem/studioFilesystem';
 import { StrudelPlaybackService } from '../services/strudel/StrudelPlaybackService';
+import {
+  updateStrudelSliderArgument,
+  type StrudelSliderArgumentName,
+  type StrudelSliderDescriptor,
+} from '../services/strudel/sliderScanner';
 import type {
   EditorFile,
   EditorPanelLeaf,
@@ -109,6 +114,23 @@ const getPlaybackSignature = (files: EditorFile[]): string => {
   return files
     .map((file) => `${file.relativePath}\u0000${file.includedInPlayAll}\u0000${file.playbackVolume}\u0000${file.content}`)
     .join('\u0001');
+};
+
+const getSliderValueSignature = (files: EditorFile[], sliderValuesById: Record<string, number>): string => {
+  const filePrefixes = files.map((file) => `studio:${file.relativePath}:slider:`);
+
+  return Object.entries(sliderValuesById)
+    .filter(([sliderId]) => filePrefixes.some((prefix) => sliderId.startsWith(prefix)))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([sliderId, value]) => `${sliderId}\u0000${value}`)
+    .join('\u0001');
+};
+
+const getPlaybackEvaluationSignature = (
+  files: EditorFile[],
+  sliderValuesById: Record<string, number>,
+): string => {
+  return `${getPlaybackSignature(files)}\u0002${getSliderValueSignature(files, sliderValuesById)}`;
 };
 
 const getWorkspaceSignature = (
@@ -219,6 +241,7 @@ export const App = (): JSX.Element => {
   const [savedWorkspaceSignature, setSavedWorkspaceSignature] = useState<string | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [openFilesByPath, setOpenFilesByPath] = useState<Record<string, EditorFile>>({});
+  const [sliderValuesById, setSliderValuesById] = useState<Record<string, number>>({});
   const [editorLayout, setEditorLayout] = useState<EditorPanelNode>(createPanelLeaf(defaultPanelId, null));
   const [activePanelId, setActivePanelId] = useState(defaultPanelId);
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(300);
@@ -253,7 +276,7 @@ export const App = (): JSX.Element => {
   const workspaceDirty = Boolean(
     project && currentWorkspaceSignature && currentWorkspaceSignature !== savedWorkspaceSignature,
   );
-  const hasUnsavedChanges = dirtyFiles.length > 0 || workspaceDirty;
+  const hasUnsavedChanges = dirtyFiles.length > 0;
   const hasUnsavedChangesRef = useRef(false);
 
   const refreshRecentProjects = useCallback(async (): Promise<void> => {
@@ -306,6 +329,7 @@ export const App = (): JSX.Element => {
       setProject(session.project);
       setWorkspacePath(session.workspacePath);
       setOpenFilesByPath(filesByPath);
+      setSliderValuesById({});
       setEditorLayout(createPanelLeaf(defaultPanelId, activePath));
       setActivePanelId(defaultPanelId);
       setSavedWorkspaceSignature(getWorkspaceSignature(session.project.rootPath, activePath, Object.values(filesByPath)));
@@ -365,6 +389,7 @@ export const App = (): JSX.Element => {
     await playbackService.current.stop();
     lastEvaluatedPlaybackSignature.current = '';
     setProject(null);
+    setSliderValuesById({});
     setSavedWorkspaceSignature(null);
     setPlayback(stoppedPlaybackState);
     await refreshRecentProjects();
@@ -629,6 +654,28 @@ export const App = (): JSX.Element => {
     [openFilesByPath, project],
   );
 
+  const handleSliderArgumentChange = useCallback(
+    (slider: StrudelSliderDescriptor, argumentName: StrudelSliderArgumentName, value: number): void => {
+      if (!activeFile || !Number.isFinite(value)) {
+        return;
+      }
+
+      const nextContent = updateStrudelSliderArgument(activeFile.content, slider, argumentName, value);
+      if (nextContent === activeFile.content) {
+        return;
+      }
+
+      if (argumentName === 'value') {
+        playbackService.current.setSliderValue(slider.id, value);
+        setSliderValuesById((previous) => ({ ...previous, [slider.id]: value }));
+      }
+
+      handleChangeContent(activeFile.relativePath, nextContent);
+    },
+    [activeFile, handleChangeContent],
+  );
+
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
@@ -663,7 +710,7 @@ export const App = (): JSX.Element => {
     setPlayback((previous) => ({ ...previous, status: 'starting', error: null }));
     const result = await playbackService.current.playFiles([activeFile], true);
     if (result.ok) {
-      lastEvaluatedPlaybackSignature.current = getPlaybackSignature([activeFile]);
+      lastEvaluatedPlaybackSignature.current = getPlaybackEvaluationSignature([activeFile], sliderValuesById);
       setPlayingState('single', [activeFile]);
     } else {
       setPlayback({
@@ -674,7 +721,7 @@ export const App = (): JSX.Element => {
         error: result.error,
       });
     }
-  }, [activeFile, setPlayingState]);
+  }, [activeFile, setPlayingState, sliderValuesById]);
 
   const handlePlayAll = useCallback(async (): Promise<void> => {
     if (includedFiles.length === 0) {
@@ -685,7 +732,7 @@ export const App = (): JSX.Element => {
     setPlayback((previous) => ({ ...previous, status: 'starting', error: null }));
     const result = await playbackService.current.playFiles(includedFiles, true);
     if (result.ok) {
-      lastEvaluatedPlaybackSignature.current = getPlaybackSignature(includedFiles);
+      lastEvaluatedPlaybackSignature.current = getPlaybackEvaluationSignature(includedFiles, sliderValuesById);
       setPlayingState('all', includedFiles);
       setOperationError(null);
     } else {
@@ -697,7 +744,7 @@ export const App = (): JSX.Element => {
         error: result.error,
       });
     }
-  }, [includedFiles, setPlayingState]);
+  }, [includedFiles, setPlayingState, sliderValuesById]);
 
   const handleStop = useCallback(async (): Promise<void> => {
     await playbackService.current.stop();
@@ -726,8 +773,8 @@ export const App = (): JSX.Element => {
   }, [includedFiles, openFilesByPath, playback.activeFilePaths, playback.mode, playback.status]);
 
   const livePlaybackSignature = useMemo(() => {
-    return getPlaybackSignature(livePlaybackFiles);
-  }, [livePlaybackFiles]);
+    return getPlaybackEvaluationSignature(livePlaybackFiles, sliderValuesById);
+  }, [livePlaybackFiles, sliderValuesById]);
 
   useEffect(() => {
     if (playback.status !== 'playing') {
@@ -905,6 +952,9 @@ export const App = (): JSX.Element => {
           sampleServer={project.sampleServer}
           playbackError={playback.error}
           workspacePath={workspacePath}
+          activeFile={activeFile}
+          sliderValues={sliderValuesById}
+          onSliderArgumentChange={handleSliderArgumentChange}
         />
       </div>
 

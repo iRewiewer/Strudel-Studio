@@ -1,3 +1,5 @@
+import { applyStableSliderIds } from './sliderScanner';
+
 export type PlayableStrudelFile = {
   relativePath: string;
   content: string;
@@ -44,7 +46,7 @@ export const combineStrudelFiles = (files: PlayableStrudelFile[]): CombinedProgr
   const sections: CombinedProgramSection[] = [];
 
   for (const file of files) {
-    const source = normalizeLineEndings(file.content);
+    const source = applyStableSliderIds(normalizeLineEndings(file.content), file.relativePath);
     const wrappableSource = toWrappableSource(source);
     const canWrap = wrappableSource !== null;
     const sourceLines = (wrappableSource ?? source).length > 0 ? (wrappableSource ?? source).split('\n') : [''];
@@ -54,7 +56,6 @@ export const combineStrudelFiles = (files: PlayableStrudelFile[]): CombinedProgr
     if (!canWrap) {
       codeLines.push(...sourceLines);
     } else {
-      const patternId = `studio:${file.relativePath}`;
       const volume = Number.isFinite(file.playbackVolume) ? file.playbackVolume : 1;
       codeLines.push('$: (');
       codeLines.push(...normalizeLineEndings(toExpressionSource(wrappableSource)).split('\n'));

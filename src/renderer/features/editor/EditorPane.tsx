@@ -31,6 +31,19 @@ const EditorLeaf = ({
     ? openFiles.find((file) => file.relativePath === panel.filePath) ?? null
     : null;
 
+  const closeFileFromMiddleClick = (
+    event: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>,
+    relativePath: string,
+  ): void => {
+    if (event.button !== 1) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    onCloseFile(relativePath);
+  };
+
   return (
     <div
       className={`editor-shell ${activePanelId === panel.id ? 'is-active-panel' : ''}`}
@@ -42,6 +55,8 @@ const EditorLeaf = ({
           <div
             className={`editor-tab ${activeFile?.relativePath === file.relativePath ? 'is-active' : ''}`}
             key={file.relativePath}
+            onAuxClick={(event) => closeFileFromMiddleClick(event, file.relativePath)}
+            onPointerDown={(event) => closeFileFromMiddleClick(event, file.relativePath)}
           >
             <button type="button" role="tab" onClick={() => onActivateFile(panel.id, file.relativePath)}>
               <span>{file.name}</span>

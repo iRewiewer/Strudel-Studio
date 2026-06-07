@@ -8,6 +8,11 @@ echo "Strudel Studio desktop build"
 echo "Output folder: build"
 echo
 
+if [ -d build ]; then
+  echo "Cleaning old build output..."
+  rm -rf build
+fi
+
 if ! command -v npm >/dev/null 2>&1; then
   echo "npm was not found. Install Node.js LTS first: https://nodejs.org/"
   exit 1

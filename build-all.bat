@@ -8,6 +8,11 @@ echo Strudel Studio desktop build
 echo Output folder: build
 echo.
 
+if exist build (
+  echo Cleaning old build output...
+  rmdir /s /q build
+)
+
 where npm >nul 2>nul
 if errorlevel 1 (
   echo npm was not found. Install Node.js LTS first: https://nodejs.org/

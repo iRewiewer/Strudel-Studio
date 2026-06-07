@@ -18,7 +18,7 @@ import {
 import { toStudioError } from './errorMapping';
 
 type StrudelWindow = Window & {
-  sliderWithID?: (id: string, value: number, min?: number, max?: number) => number;
+  sliderWithID?: (id: string, value: number, min?: number, max?: number, step?: number) => number;
 };
 
 type WidgetOptions = Record<string, unknown>;
@@ -48,6 +48,14 @@ export class StrudelPlaybackService {
     if (!manifestUrl) {
       this.loadedSampleManifestUrl = null;
     }
+  }
+
+  setSliderValue(id: string, value: number): void {
+    if (!Number.isFinite(value)) {
+      return;
+    }
+
+    this.sliderValues.set(id, value);
   }
 
   async playFiles(files: PlayableStrudelFile[], restart: boolean): Promise<PlaybackResult> {
@@ -129,7 +137,7 @@ export class StrudelPlaybackService {
     this.loadedSampleManifestUrl = this.sampleManifestUrl;
   }
 
-  private sliderWithID = (id: string, value: number, min?: number, max?: number): number => {
+  private sliderWithID = (id: string, value: number, min?: number, max?: number, step?: number): number => {
     const previous = this.sliderValues.get(id);
     const next = previous ?? value;
     const lower = min ?? Number.NEGATIVE_INFINITY;
