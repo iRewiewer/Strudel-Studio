@@ -36,30 +36,33 @@ const createProject = async (projectRoot: string): Promise<ProjectSessionSnapsho
 
 export const registerFilesystemIpc = (): void => {
   ipcMain.handle(ipcChannels.newProjectFolder, async () => {
-    const selectedPath = await selectProjectFolder('Create Strudel Studio project');
-    if (!selectedPath) {
-      return null;
-    }
-
-    if (await workspaceExists(selectedPath)) {
-      const result = await dialog.showMessageBox({
-        type: 'question',
-        title: 'Existing Strudel project',
-        message: 'This already is a Strudel project. Would you like to open it?',
-        buttons: ['Open Existing', 'Create New', 'Cancel'],
-        defaultId: 0,
-        cancelId: 2,
-      });
-
-      if (result.response === 0) {
-        return loadProjectWorkspace(selectedPath);
-      }
-      if (result.response === 2) {
+    while (true) {
+      const selectedPath = await selectProjectFolder('Create Strudel Studio project');
+      if (!selectedPath) {
         return null;
       }
-    }
 
-    return createProject(selectedPath);
+      if (await workspaceExists(selectedPath)) {
+        const result = await dialog.showMessageBox({
+          type: 'question',
+          title: 'Existing Strudel project',
+          message: 'This already is a Strudel project. Would you like to open it?',
+          buttons: ['Open Existing', 'Choose Different Folder', 'Cancel'],
+          defaultId: 0,
+          cancelId: 2,
+        });
+
+        if (result.response === 0) {
+          return loadProjectWorkspace(selectedPath);
+        }
+        if (result.response === 1) {
+          continue;
+        }
+        return null;
+      }
+
+      return createProject(selectedPath);
+    }
   });
 
   ipcMain.handle(ipcChannels.openProjectFolder, async () => {

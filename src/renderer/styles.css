@@ -340,8 +340,12 @@ button:disabled {
 }
 
 .workspace-grid {
+  width: 100%;
+  height: 100%;
   min-height: 0;
+  min-width: 0;
   display: grid;
+  overflow: hidden;
 }
 
 .sidebar {
@@ -430,8 +434,9 @@ button:disabled {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
-  min-height: 36px;
+  gap: 4px 6px;
+  min-height: 58px;
+  padding: 4px 0;
   border-radius: 8px;
 }
 
@@ -496,6 +501,24 @@ button:disabled {
   background: #222922;
 }
 
+.volume-slider {
+  grid-column: 2;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 2px;
+  color: #87938b;
+  font-size: 0.72rem;
+}
+
+.volume-slider input {
+  min-width: 0;
+  width: 100%;
+  accent-color: #95d988;
+}
+
 .dirty-dot {
   width: 7px;
   height: 7px;
@@ -504,28 +527,44 @@ button:disabled {
 }
 
 .editor-workspace {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+  background: #28302c;
+}
+
+.editor-split {
   min-width: 0;
   min-height: 0;
   display: grid;
   gap: 1px;
+  overflow: hidden;
   background: #28302c;
 }
 
-.editor-workspace.split-vertical {
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
+.editor-split.split-vertical {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
-.editor-workspace.split-horizontal {
-  grid-auto-flow: row;
-  grid-auto-rows: minmax(0, 1fr);
+.editor-split.split-horizontal {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .editor-shell {
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   display: grid;
   grid-template-rows: 42px minmax(0, 1fr);
+  overflow: hidden;
   background: #0f1211;
 }
 
@@ -588,7 +627,10 @@ button:disabled {
 
 .code-editor {
   width: 100%;
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
   border: 1px solid transparent;
   color: #f2f6ef;
   background: #0f1211;
@@ -600,17 +642,27 @@ button:disabled {
 }
 
 .code-editor .cm-editor {
+  width: 100%;
+  max-width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   background: #0f1211;
 }
 
 .code-editor .cm-scroller {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
   font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
   font-size: 15px;
   line-height: 1.62;
 }
 
 .code-editor .cm-content {
+  min-width: max-content;
   padding: 18px 0;
 }
 

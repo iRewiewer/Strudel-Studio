@@ -18,7 +18,8 @@ import {
 import { StrudelPlaybackService } from '../services/strudel/StrudelPlaybackService';
 import type {
   EditorFile,
-  EditorPanelState,
+  EditorPanelLeaf,
+  EditorPanelNode,
   EditorSplitDirection,
   PlaybackState,
   StudioSettings,
@@ -33,6 +34,12 @@ const sidebarMaxWidth = 520;
 const defaultSettings: StudioSettings = {
   keepPlayAllSelectionOnClose: false,
 };
+
+const createPanelLeaf = (id: string, filePath: string | null): EditorPanelLeaf => ({
+  type: 'leaf',
+  id,
+  filePath,
+});
 
 const toForwardSlashPath = (value: string): string => value.replaceAll('\\', '/');
 
@@ -64,6 +71,7 @@ const createEditorFile = (
   relativePath: string,
   content: string,
   includedInPlayAll: boolean,
+  playbackVolume = 1,
 ): EditorFile => {
   const metadata = findProjectFile(project, relativePath);
   const name = getFileName(relativePath);
@@ -79,6 +87,7 @@ const createEditorFile = (
     content,
     dirty: false,
     includedInPlayAll,
+    playbackVolume,
     isOpen: true,
   };
 };
@@ -90,6 +99,7 @@ const createEditorFilesFromSession = (session: ProjectSessionSnapshot): Record<s
       file.relativePath,
       file.content,
       file.includedInPlayAll,
+      file.playbackVolume,
     );
     return accumulator;
   }, {});
@@ -97,12 +107,108 @@ const createEditorFilesFromSession = (session: ProjectSessionSnapshot): Record<s
 
 const getPlaybackSignature = (files: EditorFile[]): string => {
   return files
-    .map((file) => `${file.relativePath}\u0000${file.includedInPlayAll}\u0000${file.content}`)
+    .map((file) => `${file.relativePath}\u0000${file.includedInPlayAll}\u0000${file.playbackVolume}\u0000${file.content}`)
     .join('\u0001');
+};
+
+const getWorkspaceSignature = (
+  projectRoot: string,
+  activeFilePath: string | null,
+  files: EditorFile[],
+): string => {
+  const workspaceFiles = files
+    .filter((file) => file.isOpen || file.includedInPlayAll)
+    .map((file) => ({
+      relativePath: file.relativePath,
+      includedInPlayAll: file.includedInPlayAll,
+      playbackVolume: file.playbackVolume,
+    }))
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+
+  return JSON.stringify({
+    projectRoot,
+    activeFilePath,
+    openFiles: workspaceFiles,
+  });
 };
 
 const clamp = (value: number, min: number, max: number): number => {
   return Math.min(Math.max(value, min), max);
+};
+
+const findPanelLeaf = (node: EditorPanelNode, panelId: string): EditorPanelLeaf | null => {
+  if (node.type === 'leaf') {
+    return node.id === panelId ? node : null;
+  }
+
+  return findPanelLeaf(node.children[0], panelId) ?? findPanelLeaf(node.children[1], panelId);
+};
+
+const findFirstPanelLeaf = (node: EditorPanelNode): EditorPanelLeaf => {
+  return node.type === 'leaf' ? node : findFirstPanelLeaf(node.children[0]);
+};
+
+const countPanelLeaves = (node: EditorPanelNode): number => {
+  return node.type === 'leaf' ? 1 : countPanelLeaves(node.children[0]) + countPanelLeaves(node.children[1]);
+};
+
+const mapPanelLeaves = (
+  node: EditorPanelNode,
+  mapper: (leaf: EditorPanelLeaf) => EditorPanelLeaf,
+): EditorPanelNode => {
+  if (node.type === 'leaf') {
+    return mapper(node);
+  }
+
+  return {
+    ...node,
+    children: [mapPanelLeaves(node.children[0], mapper), mapPanelLeaves(node.children[1], mapper)],
+  };
+};
+
+const splitPanelLeaf = (
+  node: EditorPanelNode,
+  panelId: string,
+  direction: EditorSplitDirection,
+  newPanelId: string,
+  filePath: string | null,
+): EditorPanelNode => {
+  if (node.type === 'leaf') {
+    return node.id === panelId
+      ? {
+          type: 'split',
+          id: `split-${Date.now()}`,
+          direction,
+          children: [node, createPanelLeaf(newPanelId, filePath)],
+        }
+      : node;
+  }
+
+  return {
+    ...node,
+    children: [
+      splitPanelLeaf(node.children[0], panelId, direction, newPanelId, filePath),
+      splitPanelLeaf(node.children[1], panelId, direction, newPanelId, filePath),
+    ],
+  };
+};
+
+const removePanelLeaf = (node: EditorPanelNode, panelId: string): EditorPanelNode | null => {
+  if (node.type === 'leaf') {
+    return node.id === panelId ? null : node;
+  }
+
+  const left = removePanelLeaf(node.children[0], panelId);
+  const right = removePanelLeaf(node.children[1], panelId);
+
+  if (!left) {
+    return right;
+  }
+  if (!right) {
+    return left;
+  }
+
+  return { ...node, children: [left, right] };
 };
 
 export const App = (): JSX.Element => {
@@ -110,13 +216,11 @@ export const App = (): JSX.Element => {
   const lastEvaluatedPlaybackSignature = useRef('');
   const [project, setProject] = useState<WorkbenchProject | null>(null);
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
+  const [savedWorkspaceSignature, setSavedWorkspaceSignature] = useState<string | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [openFilesByPath, setOpenFilesByPath] = useState<Record<string, EditorFile>>({});
-  const [editorPanels, setEditorPanels] = useState<EditorPanelState[]>([
-    { id: defaultPanelId, filePath: null },
-  ]);
+  const [editorLayout, setEditorLayout] = useState<EditorPanelNode>(createPanelLeaf(defaultPanelId, null));
   const [activePanelId, setActivePanelId] = useState(defaultPanelId);
-  const [splitDirection, setSplitDirection] = useState<EditorSplitDirection>('vertical');
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(300);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(280);
   const [settings, setSettings] = useState<StudioSettings>(defaultSettings);
@@ -138,9 +242,19 @@ export const App = (): JSX.Element => {
     () => allTrackedFiles.filter((file) => file.dirty),
     [allTrackedFiles],
   );
-  const activePanel = editorPanels.find((panel) => panel.id === activePanelId) ?? editorPanels[0] ?? null;
+  const activePanel = findPanelLeaf(editorLayout, activePanelId) ?? findFirstPanelLeaf(editorLayout);
   const activeFilePath = activePanel?.filePath ?? null;
   const activeFile = activeFilePath ? openFilesByPath[activeFilePath] ?? null : null;
+  const panelCount = countPanelLeaves(editorLayout);
+  const currentWorkspaceSignature = useMemo(
+    () => (project ? getWorkspaceSignature(project.rootPath, activeFilePath, allTrackedFiles) : null),
+    [activeFilePath, allTrackedFiles, project],
+  );
+  const workspaceDirty = Boolean(
+    project && currentWorkspaceSignature && currentWorkspaceSignature !== savedWorkspaceSignature,
+  );
+  const hasUnsavedChanges = dirtyFiles.length > 0 || workspaceDirty;
+  const hasUnsavedChangesRef = useRef(false);
 
   const refreshRecentProjects = useCallback(async (): Promise<void> => {
     setRecentProjects(await listRecentProjects());
@@ -156,10 +270,26 @@ export const App = (): JSX.Element => {
     playbackService.current.setSampleManifestUrl(project?.sampleServer?.manifestUrl ?? null);
   }, [project?.sampleServer?.manifestUrl]);
 
+  useEffect(() => {
+    hasUnsavedChangesRef.current = hasUnsavedChanges;
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    return window.studio.onCloseRequested(() => {
+      const shouldClose =
+        !hasUnsavedChangesRef.current ||
+        window.confirm('You have unsaved changes. Are you sure you want to close Strudel Studio?');
+
+      void window.studio.confirmClose(shouldClose).catch((error) => {
+        setOperationError(error instanceof Error ? error.message : String(error));
+      });
+    });
+  }, []);
+
   const setPanelFile = useCallback((panelId: string, relativePath: string | null): void => {
     setActivePanelId(panelId);
-    setEditorPanels((previous) =>
-      previous.map((panel) => (panel.id === panelId ? { ...panel, filePath: relativePath } : panel)),
+    setEditorLayout((previous) =>
+      mapPanelLeaves(previous, (panel) => (panel.id === panelId ? { ...panel, filePath: relativePath } : panel)),
     );
   }, []);
 
@@ -176,9 +306,9 @@ export const App = (): JSX.Element => {
       setProject(session.project);
       setWorkspacePath(session.workspacePath);
       setOpenFilesByPath(filesByPath);
-      setEditorPanels([{ id: defaultPanelId, filePath: activePath }]);
+      setEditorLayout(createPanelLeaf(defaultPanelId, activePath));
       setActivePanelId(defaultPanelId);
-      setSplitDirection('vertical');
+      setSavedWorkspaceSignature(getWorkspaceSignature(session.project.rootPath, activePath, Object.values(filesByPath)));
       setPlayback(stoppedPlaybackState);
       setOperationError(null);
       await refreshRecentProjects();
@@ -235,6 +365,7 @@ export const App = (): JSX.Element => {
     await playbackService.current.stop();
     lastEvaluatedPlaybackSignature.current = '';
     setProject(null);
+    setSavedWorkspaceSignature(null);
     setPlayback(stoppedPlaybackState);
     await refreshRecentProjects();
   }, [refreshRecentProjects]);
@@ -364,8 +495,8 @@ export const App = (): JSX.Element => {
         return next;
       });
 
-      setEditorPanels((previous) =>
-        previous.map((panel) =>
+      setEditorLayout((previous) =>
+        mapPanelLeaves(previous, (panel) =>
           panel.filePath === relativePath ? { ...panel, filePath: replacementPath } : panel,
         ),
       );
@@ -453,15 +584,50 @@ export const App = (): JSX.Element => {
         openFiles: workspaceFiles.map((file) => ({
           relativePath: file.relativePath,
           includedInPlayAll: file.includedInPlayAll,
+          playbackVolume: file.playbackVolume,
         })),
       });
       setWorkspacePath(savedPath);
+      setSavedWorkspaceSignature(getWorkspaceSignature(project.rootPath, activeFilePath, allTrackedFiles));
       await refreshRecentProjects();
       setOperationError(null);
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : String(error));
     }
   }, [activeFilePath, allTrackedFiles, dirtyFiles, project, refreshRecentProjects, saveFiles]);
+
+  const handlePlaybackVolumeChange = useCallback(
+    async (relativePath: string, playbackVolume: number): Promise<void> => {
+      if (!project) {
+        return;
+      }
+
+      const existing = openFilesByPath[relativePath];
+      if (existing) {
+        setOpenFilesByPath((previous) => ({
+          ...previous,
+          [relativePath]: {
+            ...existing,
+            playbackVolume,
+          },
+        }));
+        return;
+      }
+
+      try {
+        const content = await readProjectFile(project.rootPath, relativePath);
+        const trackedFile = {
+          ...createEditorFile(project, relativePath, content, false, playbackVolume),
+          isOpen: false,
+        };
+        setOpenFilesByPath((previous) => ({ ...previous, [relativePath]: trackedFile }));
+        setOperationError(null);
+      } catch (error) {
+        setOperationError(error instanceof Error ? error.message : String(error));
+      }
+    },
+    [openFilesByPath, project],
+  );
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
@@ -602,28 +768,24 @@ export const App = (): JSX.Element => {
 
   const handleSplit = useCallback(
     (direction: EditorSplitDirection): void => {
-      setSplitDirection(direction);
-      setEditorPanels((previous) => {
-        const nextPanelId = `panel-${Date.now()}`;
-        return [...previous, { id: nextPanelId, filePath: activeFilePath }];
-      });
+      const nextPanelId = `panel-${Date.now()}`;
+      setEditorLayout((previous) => splitPanelLeaf(previous, activePanelId, direction, nextPanelId, activeFilePath));
+      setActivePanelId(nextPanelId);
     },
-    [activeFilePath],
+    [activeFilePath, activePanelId],
   );
 
   const handleClosePanel = useCallback((): void => {
-    if (editorPanels.length <= 1) {
+    if (panelCount <= 1) {
       return;
     }
 
-    const activeIndex = editorPanels.findIndex((panel) => panel.id === activePanelId);
-    const nextPanels = editorPanels.filter((panel) => panel.id !== activePanelId);
-    const fallbackPanel = nextPanels[Math.max(0, activeIndex - 1)] ?? nextPanels[0];
-    setEditorPanels(nextPanels);
-    if (fallbackPanel) {
-      setActivePanelId(fallbackPanel.id);
+    const nextLayout = removePanelLeaf(editorLayout, activePanelId);
+    if (nextLayout) {
+      setEditorLayout(nextLayout);
+      setActivePanelId(findFirstPanelLeaf(nextLayout).id);
     }
-  }, [activePanelId, editorPanels]);
+  }, [activePanelId, editorLayout, panelCount]);
 
   const beginSidebarResize = useCallback(
     (side: 'left' | 'right', event: React.PointerEvent<HTMLDivElement>): void => {
@@ -675,7 +837,7 @@ export const App = (): JSX.Element => {
         activeFileName={activeFile?.name ?? null}
         includedCount={includedFiles.length}
         dirtyCount={dirtyFiles.length}
-        panelCount={editorPanels.length}
+        panelCount={panelCount}
         onPlayActive={handlePlayActive}
         onPlayAll={handlePlayAll}
         onStop={handleStop}
@@ -715,6 +877,7 @@ export const App = (): JSX.Element => {
           onCreateFile={handleCreateFile}
           onOpenFile={handleOpenFile}
           onToggleIncluded={handleToggleIncluded}
+          onPlaybackVolumeChange={handlePlaybackVolumeChange}
           onOpenProject={handleOpenProject}
         />
         <div
@@ -725,9 +888,8 @@ export const App = (): JSX.Element => {
         />
         <EditorPane
           openFiles={openFiles}
-          panels={editorPanels}
+          layout={editorLayout}
           activePanelId={activePanelId}
-          splitDirection={splitDirection}
           onActivatePanel={setActivePanelId}
           onActivateFile={setPanelFile}
           onCloseFile={handleCloseFile}

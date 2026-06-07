@@ -1,7 +1,7 @@
 {
   "name": "strudel-studio",
   "productName": "Strudel Studio",
-  "version": "0.1.0",
+  "version": "0.7.0",
   "description": "Local-first desktop studio for Strudel live coding.",
   "author": "Strudel Studio contributors",
   "license": "AGPL-3.0-or-later",
@@ -49,9 +49,16 @@
       "output": "build",
       "buildResources": "resources"
     },
+    "icon": "resources/icon",
     "files": [
       "out/**/*",
       "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      }
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "win": {

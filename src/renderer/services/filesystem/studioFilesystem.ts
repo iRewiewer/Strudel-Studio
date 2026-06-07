@@ -50,4 +50,5 @@ export const toOpenFileState = (file: OpenFileState): OpenFileState => ({
   relativePath: file.relativePath,
   content: file.content,
   includedInPlayAll: file.includedInPlayAll,
+  playbackVolume: file.playbackVolume,
 });

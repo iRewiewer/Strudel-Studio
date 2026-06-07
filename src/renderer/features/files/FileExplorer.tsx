@@ -13,7 +13,12 @@ type FileExplorerProps = {
   onCreateFile: () => void;
   onOpenFile: (relativePath: string) => void;
   onToggleIncluded: (relativePath: string, included: boolean) => void;
+  onPlaybackVolumeChange: (relativePath: string, volume: number) => void;
   onOpenProject: () => void;
+};
+
+const formatFileLabel = (relativePath: string): string => {
+  return relativePath.replace(/\.strudel$/i, '');
 };
 
 export const FileExplorer = ({
@@ -27,6 +32,7 @@ export const FileExplorer = ({
   onCreateFile,
   onOpenFile,
   onToggleIncluded,
+  onPlaybackVolumeChange,
   onOpenProject,
 }: FileExplorerProps): JSX.Element => {
   return (
@@ -67,6 +73,7 @@ export const FileExplorer = ({
           const openFile = openFilesByPath[file.relativePath];
           const included = openFile?.includedInPlayAll ?? false;
           const dirty = openFile?.dirty ?? false;
+          const playbackVolume = openFile?.playbackVolume ?? 1;
           return (
             <div
               className={`file-row ${activeFilePath === file.relativePath ? 'is-active' : ''}`}
@@ -83,9 +90,20 @@ export const FileExplorer = ({
               </label>
               <button type="button" className="file-open-button" onClick={() => onOpenFile(file.relativePath)}>
                 <FileCode2 size={16} aria-hidden="true" />
-                <span>{file.relativePath}</span>
+                <span>{formatFileLabel(file.relativePath)}</span>
                 {dirty ? <strong className="dirty-dot" aria-label="Unsaved changes" /> : null}
               </button>
+              <label className="volume-slider" title={`Volume ${Math.round(playbackVolume * 100)}%`}>
+                <span>Vol</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1.5"
+                  step="0.01"
+                  value={playbackVolume}
+                  onChange={(event) => onPlaybackVolumeChange(file.relativePath, Number(event.target.value))}
+                />
+              </label>
             </div>
           );
         })}

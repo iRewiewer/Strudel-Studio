@@ -4,6 +4,7 @@ export type EditorFile = ProjectFile & {
   content: string;
   dirty: boolean;
   includedInPlayAll: boolean;
+  playbackVolume: number;
   isOpen: boolean;
 };
 
@@ -25,10 +26,20 @@ export type WorkbenchProject = ProjectSnapshot & {
 
 export type EditorSplitDirection = 'vertical' | 'horizontal';
 
-export type EditorPanelState = {
+export type EditorPanelLeaf = {
+  type: 'leaf';
   id: string;
   filePath: string | null;
 };
+
+export type EditorPanelSplit = {
+  type: 'split';
+  id: string;
+  direction: EditorSplitDirection;
+  children: [EditorPanelNode, EditorPanelNode];
+};
+
+export type EditorPanelNode = EditorPanelLeaf | EditorPanelSplit;
 
 export type StudioSettings = {
   keepPlayAllSelectionOnClose: boolean;

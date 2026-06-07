@@ -10,6 +10,8 @@ import type {
 } from './types';
 
 export type StudioApi = {
+  onCloseRequested: (callback: () => void) => () => void;
+  confirmClose: (shouldClose: boolean) => Promise<void>;
   newProjectFolder: () => Promise<ProjectSessionSnapshot | null>;
   openProjectFolder: () => Promise<ProjectSessionSnapshot | null>;
   openRecentProject: (projectRoot: string) => Promise<ProjectSessionSnapshot | null>;
@@ -22,6 +24,8 @@ export type StudioApi = {
 };
 
 export const ipcChannels = {
+  closeRequested: 'studio:close-requested',
+  confirmClose: 'studio:confirm-close',
   newProjectFolder: 'studio:new-project-folder',
   openProjectFolder: 'studio:open-project-folder',
   openRecentProject: 'studio:open-recent-project',

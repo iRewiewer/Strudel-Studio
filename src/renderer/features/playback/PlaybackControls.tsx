@@ -77,7 +77,7 @@ export const PlaybackControls = ({
         <div className="menu-panel">
           <button type="button" onClick={onGoHome}>
             <Home size={15} aria-hidden="true" />
-            Main Window
+            Back to Main Menu
           </button>
           <button type="button" onClick={onNewProject}>
             <FilePlus2 size={15} aria-hidden="true" />

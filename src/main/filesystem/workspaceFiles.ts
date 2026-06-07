@@ -28,6 +28,7 @@ export const loadWorkspaceSnapshot = async (workspacePath: string): Promise<Work
         relativePath: file.relativePath,
         content,
         includedInPlayAll: file.includedInPlayAll,
+        playbackVolume: file.playbackVolume ?? 1,
       };
     }),
   );

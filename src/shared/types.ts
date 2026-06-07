@@ -29,6 +29,7 @@ export type OpenFileState = {
   relativePath: string;
   content: string;
   includedInPlayAll: boolean;
+  playbackVolume: number;
 };
 
 export type WorkspaceSnapshot = {
@@ -60,6 +61,7 @@ export type WorkspaceFile = {
   openFiles: Array<{
     relativePath: string;
     includedInPlayAll: boolean;
+    playbackVolume?: number;
   }>;
   activeFilePath: string | null;
   savedAt: string;
@@ -86,6 +88,7 @@ export type SaveWorkspaceRequest = {
   openFiles: Array<{
     relativePath: string;
     includedInPlayAll: boolean;
+    playbackVolume?: number;
   }>;
   activeFilePath: string | null;
 };

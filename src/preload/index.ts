@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { ipcChannels, type StudioApi } from '../shared/ipc';
 
 const api: StudioApi = {
+  onCloseRequested: (callback) => {
+    const listener = (): void => callback();
+    ipcRenderer.on(ipcChannels.closeRequested, listener);
+    return () => ipcRenderer.removeListener(ipcChannels.closeRequested, listener);
+  },
+  confirmClose: (shouldClose) => ipcRenderer.invoke(ipcChannels.confirmClose, shouldClose),
   newProjectFolder: () => ipcRenderer.invoke(ipcChannels.newProjectFolder),
   openProjectFolder: () => ipcRenderer.invoke(ipcChannels.openProjectFolder),
   openRecentProject: (projectRoot) => ipcRenderer.invoke(ipcChannels.openRecentProject, projectRoot),
