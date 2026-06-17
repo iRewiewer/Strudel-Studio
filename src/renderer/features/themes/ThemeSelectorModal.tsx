@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FolderOpen, Plus, Save, X } from 'lucide-react';
-import type { StudioTheme, StudioThemeSummary, ThemeColorKey, ThemeFontKey } from '../../../shared/types';
-import { defaultStudioTheme, themeColorKeys, themeFontKeys } from '../../../shared/theme';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FolderOpen, Plus, Save, Search, X } from 'lucide-react';
+import type {
+  StudioTheme,
+  StudioThemeSummary,
+  ThemeColorKey,
+  ThemeFontKey,
+  ThemeFontSizeKey,
+} from '../../../shared/types';
+import { defaultStudioTheme, themeColorKeys, themeFontKeys, themeFontSizeKeys } from '../../../shared/theme';
 import {
   importStudioThemeFile,
   listStudioThemes,
@@ -24,6 +30,8 @@ const defaultThemeSummary: StudioThemeSummary = {
   theme: defaultStudioTheme,
 };
 
+const unsavedThemeId = 'new-theme';
+
 const themeColorLabels: Record<ThemeColorKey, string> = {
   background: 'Background',
   surface: 'Surface',
@@ -44,15 +52,24 @@ const themeFontLabels: Record<ThemeFontKey, string> = {
   editor: 'Editor font',
 };
 
+const themeFontSizeLabels: Record<ThemeFontSizeKey, string> = {
+  editor: 'Editor font size',
+};
+
 const cloneTheme = (theme: StudioTheme): StudioTheme => ({
   version: 1,
   name: theme.name,
   colors: { ...theme.colors },
   fonts: { ...theme.fonts },
+  fontSizes: { ...theme.fontSizes },
 });
 
 const normalizeThemeName = (value: string): string => {
   return value.trim() || 'Untitled Theme';
+};
+
+const clampFontSize = (value: number): number => {
+  return Math.min(Math.max(Math.round(value), 10), 28);
 };
 
 const createNewTheme = (): StudioTheme => ({
@@ -72,8 +89,13 @@ export const ThemeSelectorModal = ({
   const [themesDirectory, setThemesDirectory] = useState('');
   const [draftTheme, setDraftTheme] = useState<StudioTheme>(() => cloneTheme(activeTheme));
   const [fonts, setFonts] = useState<string[]>([]);
+  const [fontQuery, setFontQuery] = useState('');
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const saveMenuRef = useRef<HTMLDivElement>(null);
 
   const applyDraft = useCallback(
     (theme: StudioTheme): void => {
@@ -96,21 +118,22 @@ export const ThemeSelectorModal = ({
   );
 
   const refreshThemes = useCallback(
-    async (nextSelectedThemeId?: string): Promise<void> => {
+    async (nextSelectedThemeId?: string, fallbackThemeName?: string): Promise<void> => {
       const result = await listStudioThemes();
       const nextThemes = [defaultThemeSummary, ...result.themes];
       setThemes(nextThemes);
       setThemesDirectory(result.themesDirectory);
 
-      const selected = nextThemes.find((theme) => theme.id === nextSelectedThemeId)
-        ?? nextThemes.find((theme) => theme.name === activeTheme.name)
+      const selected = (nextSelectedThemeId ? nextThemes.find((theme) => theme.id === nextSelectedThemeId) : null)
+        ?? nextThemes.find((theme) => theme.id === selectedThemeId)
+        ?? (fallbackThemeName ? nextThemes.find((theme) => theme.name === fallbackThemeName) : null)
         ?? nextThemes[0];
 
       if (selected) {
         selectTheme(selected);
       }
     },
-    [activeTheme.name, selectTheme],
+    [selectTheme, selectedThemeId],
   );
 
   useEffect(() => {
@@ -118,12 +141,50 @@ export const ThemeSelectorModal = ({
       return;
     }
 
-    void Promise.all([refreshThemes(), listSystemFonts()])
+    setAddMenuOpen(false);
+    setSaveMenuOpen(false);
+    setFontQuery('');
+
+    void Promise.all([refreshThemes(undefined, activeTheme.name), listSystemFonts()])
       .then(([, fontNames]) => setFonts(fontNames))
       .catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : String(loadError));
       });
-  }, [open, refreshThemes]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!addMenuOpen && !saveMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (addMenuOpen && !addMenuRef.current?.contains(target)) {
+        setAddMenuOpen(false);
+      }
+      if (saveMenuOpen && !saveMenuRef.current?.contains(target)) {
+        setSaveMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setAddMenuOpen(false);
+        setSaveMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [addMenuOpen, saveMenuOpen]);
 
   const fontOptions = useMemo(() => {
     return [
@@ -137,21 +198,60 @@ export const ThemeSelectorModal = ({
     ].filter(Boolean);
   }, [draftTheme.fonts.editor, draftTheme.fonts.interface, fonts]);
 
+  const filteredFontOptions = useMemo(() => {
+    const normalizedQuery = fontQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return fontOptions;
+    }
+
+    return fontOptions.filter((fontName) => fontName.toLowerCase().includes(normalizedQuery));
+  }, [fontOptions, fontQuery]);
+
+  const getFontOptionsForValue = useCallback(
+    (currentFont: string): string[] => {
+      return filteredFontOptions.includes(currentFont)
+        ? filteredFontOptions
+        : [currentFont, ...filteredFontOptions].filter(Boolean);
+    },
+    [filteredFontOptions],
+  );
+
   const updateDraftTheme = useCallback(
     (updater: (theme: StudioTheme) => StudioTheme): void => {
       setDraftTheme((previous) => {
         const nextTheme = updater(previous);
+        if (selectedThemeId === unsavedThemeId) {
+          setThemes((currentThemes) =>
+            currentThemes.map((theme) =>
+              theme.id === unsavedThemeId
+                ? { ...theme, name: normalizeThemeName(nextTheme.name), theme: nextTheme }
+                : theme,
+            ),
+          );
+        }
         onApplyTheme(nextTheme);
         return nextTheme;
       });
       setStatus(null);
     },
-    [onApplyTheme],
+    [onApplyTheme, selectedThemeId],
   );
 
   const handleCreateTheme = useCallback((): void => {
     const nextTheme = createNewTheme();
-    setSelectedThemeId('new-theme');
+    const unsavedTheme: StudioThemeSummary = {
+      id: unsavedThemeId,
+      name: nextTheme.name,
+      path: null,
+      theme: nextTheme,
+    };
+
+    setThemes((previous) => [
+      defaultThemeSummary,
+      unsavedTheme,
+      ...previous.filter((theme) => theme.id !== defaultThemeSummary.id && theme.id !== unsavedThemeId),
+    ]);
+    setSelectedThemeId(unsavedThemeId);
     setSelectedThemePath(null);
     applyDraft(nextTheme);
     setStatus(null);
@@ -183,7 +283,7 @@ export const ThemeSelectorModal = ({
   const handleSavedTheme = useCallback(
     (theme: StudioThemeSummary): void => {
       setThemes((previous) => {
-        const withoutSaved = previous.filter((item) => item.id !== theme.id);
+        const withoutSaved = previous.filter((item) => item.id !== theme.id && item.id !== unsavedThemeId);
         return [defaultThemeSummary, ...withoutSaved.filter((item) => item.id !== defaultThemeSummary.id), theme]
           .sort((left, right) => {
             if (left.id === defaultThemeSummary.id) {
@@ -245,19 +345,39 @@ export const ThemeSelectorModal = ({
         <div className="theme-modal-body">
           <aside className="theme-list-panel">
             <div className="theme-list-actions">
-              <details className="theme-action-menu">
-                <summary title="Add theme">
+              <div className="theme-action-menu" ref={addMenuRef}>
+                <button
+                  type="button"
+                  className="theme-menu-trigger"
+                  onClick={() => setAddMenuOpen((previous) => !previous)}
+                  title="Add theme"
+                  aria-expanded={addMenuOpen}
+                >
                   <Plus size={17} aria-hidden="true" />
-                </summary>
-                <div className="menu-panel">
-                  <button type="button" onClick={handleCreateTheme}>
-                    Create new theme
-                  </button>
-                  <button type="button" onClick={() => void handleImportTheme()}>
-                    Add external theme file
-                  </button>
-                </div>
-              </details>
+                </button>
+                {addMenuOpen ? (
+                  <div className="menu-panel">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        handleCreateTheme();
+                      }}
+                    >
+                      Create new theme
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddMenuOpen(false);
+                        void handleImportTheme();
+                      }}
+                    >
+                      Add external theme file
+                    </button>
+                  </div>
+                ) : null}
+              </div>
 
               <button
                 type="button"
@@ -279,7 +399,7 @@ export const ThemeSelectorModal = ({
                 >
                   <span className="theme-list-swatch" style={{ background: theme.theme.colors.primary }} />
                   <span>{theme.name}</span>
-                  <small>{theme.path ? 'Local theme' : 'Built in'}</small>
+                  <small>{theme.id === unsavedThemeId ? 'Unsaved theme' : theme.path ? 'Local theme' : 'Built in'}</small>
                 </button>
               ))}
             </div>
@@ -326,6 +446,15 @@ export const ThemeSelectorModal = ({
 
             <section className="theme-field-section">
               <h3>Fonts</h3>
+              <label className="lookup-search theme-font-search">
+                <Search size={15} aria-hidden="true" />
+                <input
+                  value={fontQuery}
+                  onChange={(event) => setFontQuery(event.target.value)}
+                  placeholder="Search fonts"
+                  aria-label="Search fonts"
+                />
+              </label>
               <div className="theme-font-grid">
                 {themeFontKeys.map((key) => (
                   <label className="theme-font-field" key={key}>
@@ -342,12 +471,52 @@ export const ThemeSelectorModal = ({
                         }))
                       }
                     >
-                      {fontOptions.map((fontName) => (
+                      {getFontOptionsForValue(draftTheme.fonts[key]).map((fontName) => (
                         <option key={`${key}-${fontName}`} value={fontName}>
                           {fontName}
                         </option>
                       ))}
                     </select>
+                  </label>
+                ))}
+              </div>
+              <div className="theme-font-size-grid">
+                {themeFontSizeKeys.map((key) => (
+                  <label className="theme-font-size-field" key={key}>
+                    <span>{themeFontSizeLabels[key]}</span>
+                    <div className="font-size-control">
+                      <input
+                        type="range"
+                        min={10}
+                        max={28}
+                        value={draftTheme.fontSizes[key]}
+                        onChange={(event) =>
+                          updateDraftTheme((theme) => ({
+                            ...theme,
+                            fontSizes: {
+                              ...theme.fontSizes,
+                              [key]: clampFontSize(Number(event.target.value)),
+                            },
+                          }))
+                        }
+                      />
+                      <input
+                        type="number"
+                        min={10}
+                        max={28}
+                        value={draftTheme.fontSizes[key]}
+                        onChange={(event) =>
+                          updateDraftTheme((theme) => ({
+                            ...theme,
+                            fontSizes: {
+                              ...theme.fontSizes,
+                              [key]: clampFontSize(Number(event.target.value)),
+                            },
+                          }))
+                        }
+                        aria-label={themeFontSizeLabels[key]}
+                      />
+                    </div>
                   </label>
                 ))}
               </div>
@@ -361,20 +530,40 @@ export const ThemeSelectorModal = ({
             {status ? <p className="theme-status">{status}</p> : null}
           </div>
 
-          <details className="theme-save-menu">
-            <summary>
+          <div className="theme-save-menu" ref={saveMenuRef}>
+            <button
+              type="button"
+              className="theme-menu-trigger theme-save-trigger"
+              onClick={() => setSaveMenuOpen((previous) => !previous)}
+              aria-expanded={saveMenuOpen}
+            >
               <Save size={16} aria-hidden="true" />
               Save
-            </summary>
-            <div className="menu-panel align-right">
-              <button type="button" onClick={() => void handleSaveTheme(true)}>
-                Save to new theme
-              </button>
-              <button type="button" onClick={() => void handleSaveTheme(false)} disabled={!selectedThemePath}>
-                Save to this theme
-              </button>
-            </div>
-          </details>
+            </button>
+            {saveMenuOpen ? (
+              <div className="menu-panel align-right">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveMenuOpen(false);
+                    void handleSaveTheme(true);
+                  }}
+                >
+                  Save to new theme
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSaveMenuOpen(false);
+                    void handleSaveTheme(false);
+                  }}
+                  disabled={!selectedThemePath}
+                >
+                  Save to this theme
+                </button>
+              </div>
+            ) : null}
+          </div>
         </footer>
       </section>
     </div>

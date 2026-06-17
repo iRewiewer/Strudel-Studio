@@ -28,17 +28,22 @@ case "$OS_NAME" in
     echo
     echo "Building macOS DMG/ZIP packages..."
     npx electron-builder --mac --x64 --arm64
+    npm run collect:artifacts
 
     echo
     echo "Trying Windows packages from macOS..."
     if ! npx electron-builder --win --x64; then
       echo "Windows packaging did not complete on this Mac. Install Wine or build Windows on Windows/CI."
+    else
+      npm run collect:artifacts
     fi
 
     echo
     echo "Trying Linux packages from macOS..."
     if ! npx electron-builder --linux --x64; then
       echo "Linux packaging did not complete on this Mac. Build Linux on Linux, or use Docker/electron-builder CI later."
+    else
+      npm run collect:artifacts
     fi
     ;;
 
@@ -46,11 +51,14 @@ case "$OS_NAME" in
     echo
     echo "Building Linux AppImage/DEB packages..."
     npx electron-builder --linux --x64
+    npm run collect:artifacts
 
     echo
     echo "Trying Windows packages from Linux..."
     if ! npx electron-builder --win --x64; then
       echo "Windows packaging did not complete on this Linux machine. Install Wine or build Windows on Windows/CI."
+    else
+      npm run collect:artifacts
     fi
 
     echo
@@ -65,4 +73,4 @@ case "$OS_NAME" in
 esac
 
 echo
-echo "Build output is in the build folder."
+echo "Distributable packages are in build/bin. Intermediate builder output remains in build."

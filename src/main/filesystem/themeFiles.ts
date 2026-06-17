@@ -2,8 +2,16 @@ import { app } from 'electron';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, join, parse, resolve, sep } from 'node:path';
-import type { SaveThemeRequest, SaveThemeResult, StudioTheme, StudioThemeSummary, ThemeColorKey, ThemeFontKey } from '../../shared/types';
-import { defaultStudioTheme, themeColorKeys, themeFontKeys } from '../../shared/theme';
+import type {
+  SaveThemeRequest,
+  SaveThemeResult,
+  StudioTheme,
+  StudioThemeSummary,
+  ThemeColorKey,
+  ThemeFontKey,
+  ThemeFontSizeKey,
+} from '../../shared/types';
+import { defaultStudioTheme, themeColorKeys, themeFontKeys, themeFontSizeKeys } from '../../shared/theme';
 
 const fontExtensions = new Set(['.otf', '.ttc', '.ttf', '.woff', '.woff2']);
 
@@ -46,10 +54,20 @@ const normalizeHexColor = (value: unknown, fallback: string): string => {
   return fallback;
 };
 
+const normalizeFontSize = (value: unknown, fallback: number): number => {
+  const size = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(size)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.round(size), 10), 28);
+};
+
 const normalizeTheme = (raw: unknown, fallbackName: string): StudioTheme => {
   const source = isObject(raw) ? raw : {};
   const sourceColors = isObject(source.colors) ? source.colors : {};
   const sourceFonts = isObject(source.fonts) ? source.fonts : {};
+  const sourceFontSizes = isObject(source.fontSizes) ? source.fontSizes : {};
   const colors = themeColorKeys.reduce<Record<ThemeColorKey, string>>((accumulator, key) => {
     accumulator[key] = normalizeHexColor(sourceColors[key], defaultStudioTheme.colors[key]);
     return accumulator;
@@ -61,12 +79,17 @@ const normalizeTheme = (raw: unknown, fallbackName: string): StudioTheme => {
       : defaultStudioTheme.fonts[key];
     return accumulator;
   }, {} as Record<ThemeFontKey, string>);
+  const fontSizes = themeFontSizeKeys.reduce<Record<ThemeFontSizeKey, number>>((accumulator, key) => {
+    accumulator[key] = normalizeFontSize(sourceFontSizes[key], defaultStudioTheme.fontSizes[key]);
+    return accumulator;
+  }, {} as Record<ThemeFontSizeKey, number>);
 
   return {
     version: 1,
     name: typeof source.name === 'string' && source.name.trim() ? source.name.trim() : fallbackName,
     colors,
     fonts,
+    fontSizes,
   };
 };
 

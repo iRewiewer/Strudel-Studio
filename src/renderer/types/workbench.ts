@@ -30,6 +30,7 @@ export type EditorPanelLeaf = {
   type: 'leaf';
   id: string;
   filePath: string | null;
+  filePaths: string[];
 };
 
 export type EditorPanelSplit = {

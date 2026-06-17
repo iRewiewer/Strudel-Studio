@@ -1,4 +1,4 @@
-import type { StudioTheme, ThemeColorKey, ThemeFontKey } from './types';
+import type { StudioTheme, ThemeColorKey, ThemeFontKey, ThemeFontSizeKey } from './types';
 
 export const themeColorKeys: ThemeColorKey[] = [
   'background',
@@ -16,6 +16,8 @@ export const themeColorKeys: ThemeColorKey[] = [
 ];
 
 export const themeFontKeys: ThemeFontKey[] = ['interface', 'editor'];
+
+export const themeFontSizeKeys: ThemeFontSizeKey[] = ['editor'];
 
 export const defaultStudioTheme: StudioTheme = {
   version: 1,
@@ -37,5 +39,8 @@ export const defaultStudioTheme: StudioTheme = {
   fonts: {
     interface: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
     editor: '"Cascadia Code", "Fira Code", Consolas, monospace',
+  },
+  fontSizes: {
+    editor: 15,
   },
 };

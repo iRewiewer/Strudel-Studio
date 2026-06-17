@@ -10,7 +10,7 @@ type EditorPaneProps = {
   activePanelId: string;
   onActivatePanel: (panelId: string) => void;
   onActivateFile: (panelId: string, relativePath: string) => void;
-  onCloseFile: (relativePath: string) => void;
+  onCloseFile: (panelId: string, relativePath: string) => void;
   onChangeContent: (relativePath: string, content: string) => void;
 };
 
@@ -30,6 +30,14 @@ const EditorLeaf = ({
   const activeFile = panel.filePath
     ? openFiles.find((file) => file.relativePath === panel.filePath) ?? null
     : null;
+  const panelFiles = [
+    ...new Set([
+      ...panel.filePaths,
+      ...(panel.filePath ? [panel.filePath] : []),
+    ]),
+  ]
+    .map((relativePath) => openFiles.find((file) => file.relativePath === relativePath) ?? null)
+    .filter((file): file is EditorFile => Boolean(file));
 
   const closeFileFromMiddleClick = (
     event: React.MouseEvent<HTMLDivElement> | React.PointerEvent<HTMLDivElement>,
@@ -41,7 +49,7 @@ const EditorLeaf = ({
 
     event.preventDefault();
     event.stopPropagation();
-    onCloseFile(relativePath);
+    onCloseFile(panel.id, relativePath);
   };
 
   return (
@@ -51,7 +59,7 @@ const EditorLeaf = ({
       onMouseDown={() => onActivatePanel(panel.id)}
     >
       <div className="tab-strip" role="tablist">
-        {openFiles.map((file) => (
+        {panelFiles.map((file) => (
           <div
             className={`editor-tab ${activeFile?.relativePath === file.relativePath ? 'is-active' : ''}`}
             key={file.relativePath}
@@ -65,7 +73,7 @@ const EditorLeaf = ({
             <button
               type="button"
               className="tab-close"
-              onClick={() => onCloseFile(file.relativePath)}
+              onClick={() => onCloseFile(panel.id, file.relativePath)}
               title="Close file"
             >
               <X size={14} aria-hidden="true" />

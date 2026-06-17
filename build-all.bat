@@ -29,6 +29,8 @@ echo.
 echo Building Windows installer and portable app...
 call npx electron-builder --win --x64
 if errorlevel 1 exit /b 1
+call npm run collect:artifacts
+if errorlevel 1 exit /b 1
 
 echo.
 echo Trying Linux packages from Windows...
@@ -37,10 +39,14 @@ if errorlevel 1 (
   echo.
   echo Linux packaging did not complete on this Windows machine.
   echo Build Linux on Linux, or use Docker/electron-builder CI later.
+  echo Skipping Linux artifact collection.
+) else (
+  call npm run collect:artifacts
+  if errorlevel 1 exit /b 1
 )
 
 echo.
 echo macOS DMG/ZIP packages must be built on macOS because Apple signing and packaging tools are macOS-only.
 echo Run ./build-all.sh on a Mac to create macOS packages.
 echo.
-echo Build output is in the build folder.
+echo Distributable packages are in build\bin. Intermediate builder output remains in build.

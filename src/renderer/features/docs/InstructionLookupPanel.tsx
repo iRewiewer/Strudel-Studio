@@ -1,6 +1,12 @@
 import { useMemo, useState } from 'react';
 import { BookOpen, Search } from 'lucide-react';
 import { strudelScope } from '@strudel/web';
+import controlsSource from '@strudel/core/controls.mjs?raw';
+import euclidSource from '@strudel/core/euclid.mjs?raw';
+import patternSource from '@strudel/core/pattern.mjs?raw';
+import pickSource from '@strudel/core/pick.mjs?raw';
+import signalSource from '@strudel/core/signal.mjs?raw';
+import tonalSource from '@strudel/tonal/tonal.mjs?raw';
 
 type InstructionCategory =
   | 'Pattern'
@@ -28,6 +34,139 @@ type InstructionMetadata = {
 type InstructionEntry = InstructionMetadata & {
   name: string;
 };
+
+type RuntimeInstructionDoc = {
+  description: string;
+  signature: string;
+  tags: string[];
+};
+
+const runtimeDocSources = [
+  controlsSource,
+  euclidSource,
+  patternSource,
+  pickSource,
+  signalSource,
+  tonalSource,
+];
+
+const cleanDocLine = (line: string): string => {
+  return line.replace(/^\s*\*\s?/, '').trimEnd();
+};
+
+const normalizeParamName = (value: string): string => {
+  const withoutDecorators = value
+    .replace(/^\[/, '')
+    .replace(/\]$/, '')
+    .replace(/^\.\.\./, '');
+  const [beforeDefault = ''] = withoutDecorators.split('=');
+  const [rootName = ''] = beforeDefault.split('.');
+  return rootName.trim();
+};
+
+const parseDocNames = (value: string): string[] => {
+  return value
+    .split(/[,\s]+/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+};
+
+const parseRuntimeDocBlock = (block: string): Array<[string, RuntimeInstructionDoc]> => {
+  const lines = block.split('\n').map(cleanDocLine);
+  const names: string[] = [];
+  const tags: string[] = [];
+  const params: string[] = [];
+  const descriptionLines: string[] = [];
+  let readingDescription = true;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      if (readingDescription && descriptionLines.length > 0) {
+        descriptionLines.push(' ');
+      }
+      continue;
+    }
+
+    if (!trimmed.startsWith('@')) {
+      if (readingDescription) {
+        descriptionLines.push(trimmed);
+      }
+      continue;
+    }
+
+    readingDescription = false;
+    if (trimmed.startsWith('@name ')) {
+      names.push(...parseDocNames(trimmed.slice('@name '.length)));
+      continue;
+    }
+
+    if (trimmed.startsWith('@synonyms ')) {
+      names.push(...parseDocNames(trimmed.slice('@synonyms '.length)));
+      continue;
+    }
+
+    if (trimmed.startsWith('@memberof ')) {
+      tags.push(trimmed.slice('@memberof '.length).trim());
+      continue;
+    }
+
+    if (trimmed.startsWith('@superdirtOnly')) {
+      tags.push('superdirt');
+      continue;
+    }
+
+    if (trimmed.startsWith('@param ')) {
+      const paramMatch = trimmed.match(/^@param\s+\{[^}]+\}\s+([^\s]+)/);
+      const paramName = paramMatch?.[1] ? normalizeParamName(paramMatch[1]) : '';
+      if (paramName && !params.includes(paramName)) {
+        params.push(paramName);
+      }
+    }
+  }
+
+  const description = descriptionLines
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (names.length === 0 || !description) {
+    return [];
+  }
+
+  return uniqueInstructionNames(names).map((name) => [
+    name,
+    {
+      description,
+      signature: `${name}(${params.join(', ')})`,
+      tags,
+    },
+  ]);
+};
+
+const parseRuntimeDocs = (): Map<string, RuntimeInstructionDoc> => {
+  const docs = new Map<string, RuntimeInstructionDoc>();
+  const blockPattern = /\/\*\*([\s\S]*?)\*\//g;
+
+  for (const source of runtimeDocSources) {
+    for (const match of source.matchAll(blockPattern)) {
+      for (const [name, doc] of parseRuntimeDocBlock(match[1] ?? '')) {
+        if (!docs.has(name)) {
+          docs.set(name, doc);
+        }
+      }
+    }
+  }
+
+  return docs;
+};
+
+function uniqueInstructionNames(names: string[]): string[] {
+  return [...new Set(names.filter((name) => /^[A-Za-z_$][\w$]*$/.test(name)))];
+}
+
+const runtimeDocsByName = parseRuntimeDocs();
 
 const curatedInstructions: Record<string, InstructionMetadata> = {
   s: {
@@ -500,22 +639,29 @@ const inferDescription = (name: string, category: InstructionCategory): string =
       return 'Playback, setup, or runtime utility.';
     case 'Pattern':
     default:
-      return 'Pattern instruction exported by the installed Strudel runtime.';
+      return 'Pattern construction, transformation, or value helper from the installed Strudel runtime.';
   }
 };
 
 const createEntry = (name: string): InstructionEntry => {
   const curated = curatedInstructions[name];
   if (curated) {
-    return { name, ...curated };
+    const runtimeDoc = runtimeDocsByName.get(name);
+    return {
+      name,
+      ...curated,
+      tags: [...(curated.tags ?? []), ...(runtimeDoc?.tags ?? [])],
+    };
   }
 
+  const runtimeDoc = runtimeDocsByName.get(name);
   const category = inferCategory(name);
   return {
     name,
     category,
-    signature: `${name}(...)`,
-    description: inferDescription(name, category),
+    signature: runtimeDoc?.signature ?? `${name}(...)`,
+    description: runtimeDoc?.description ?? inferDescription(name, category),
+    tags: runtimeDoc?.tags,
   };
 };
 

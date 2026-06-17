@@ -24,4 +24,5 @@ export const applyStudioTheme = (theme: StudioTheme): void => {
 
   root.style.setProperty('--studio-interface-font', theme.fonts.interface);
   root.style.setProperty('--studio-editor-font', theme.fonts.editor);
+  root.style.setProperty('--studio-editor-font-size', `${theme.fontSizes.editor}px`);
 };

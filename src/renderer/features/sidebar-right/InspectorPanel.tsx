@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { AlertTriangle, BookOpen, FolderTree, Info, Music, SlidersHorizontal } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, AudioWaveform, BookOpen, FolderTree, Info, Music, Search, SlidersHorizontal } from 'lucide-react';
 import type { SampleServerInfo, StudioError } from '../../../shared/types';
 import { SidebarTabs, type SidebarTabDefinition } from '../../components/SidebarTabs';
 import { InstructionLookupPanel } from '../docs/InstructionLookupPanel';
@@ -36,6 +36,30 @@ type SlidersPanelProps = {
     value: number,
   ) => void;
 };
+
+type SoundsPanelProps = {
+  sampleServer: SampleServerInfo | null;
+};
+
+type SoundGroup = {
+  title: string;
+  names: string[];
+};
+
+const builtInSoundGroups: SoundGroup[] = [
+  {
+    title: 'Synths',
+    names: ['triangle', 'tri', 'square', 'sqr', 'sawtooth', 'saw', 'sine', 'sin', 'pulse', 'supersaw', 'sbd', 'bytebeat'],
+  },
+  {
+    title: 'Noise',
+    names: ['white', 'pink', 'brown', 'crackle'],
+  },
+  {
+    title: 'Utility',
+    names: ['bus', 'one', 'user'],
+  },
+];
 
 const formatSliderNumber = (value: number): string => {
   return Number.isInteger(value) ? String(value) : Number(value.toFixed(4)).toString();
@@ -236,6 +260,115 @@ const SlidersPanel = ({
   );
 };
 
+const SoundsPanel = ({ sampleServer }: SoundsPanelProps): JSX.Element => {
+  const [query, setQuery] = useState('');
+  const [sampleNames, setSampleNames] = useState<string[]>([]);
+  const [sampleError, setSampleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sampleServer) {
+      setSampleNames([]);
+      setSampleError(null);
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    void fetch(sampleServer.manifestUrl, { signal: controller.signal })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Sample manifest returned ${response.status}.`);
+        }
+        return response.json() as Promise<Record<string, unknown>>;
+      })
+      .then((manifest) => {
+        const names = Object.keys(manifest)
+          .filter((name) => name !== '_base')
+          .sort((left, right) => left.localeCompare(right));
+        setSampleNames(names);
+        setSampleError(null);
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return;
+        }
+        setSampleError(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => controller.abort();
+  }, [sampleServer]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filterNames = (names: string[]): string[] => {
+    return normalizedQuery
+      ? names.filter((name) => name.toLowerCase().includes(normalizedQuery))
+      : names;
+  };
+  const filteredSampleNames = filterNames(sampleNames);
+
+  return (
+    <section className="sound-browser">
+      <div className="section-title">
+        <AudioWaveform size={16} aria-hidden="true" />
+        <h2>Sounds</h2>
+      </div>
+
+      <label className="lookup-search">
+        <Search size={15} aria-hidden="true" />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search sounds"
+          aria-label="Search sounds"
+        />
+      </label>
+
+      {builtInSoundGroups.map((group) => {
+        const names = filterNames(group.names);
+        if (names.length === 0) {
+          return null;
+        }
+
+        return (
+          <article className="sound-group" key={group.title}>
+            <div className="sound-group-heading">
+              <h3>{group.title}</h3>
+              <span>{names.length}</span>
+            </div>
+            <div className="sound-chip-list">
+              {names.map((name) => (
+                <code className="sound-chip" key={`${group.title}-${name}`}>
+                  {name}
+                </code>
+              ))}
+            </div>
+          </article>
+        );
+      })}
+
+      <article className="sound-group">
+        <div className="sound-group-heading">
+          <h3>Project Samples</h3>
+          <span>{filteredSampleNames.length}</span>
+        </div>
+        {sampleError ? <p className="detail-line">{sampleError}</p> : null}
+        {!sampleError && sampleServer && filteredSampleNames.length > 0 ? (
+          <div className="sound-chip-list">
+            {filteredSampleNames.map((name) => (
+              <code className="sound-chip" key={`sample-${name}`}>
+                {name}
+              </code>
+            ))}
+          </div>
+        ) : null}
+        {!sampleError && sampleServer && filteredSampleNames.length === 0 ? (
+          <p className="detail-line">No matching local samples.</p>
+        ) : null}
+        {!sampleError && !sampleServer ? <p className="detail-line">No local samples folder.</p> : null}
+      </article>
+    </section>
+  );
+};
+
 export const InspectorPanel = ({
   sampleServer,
   playbackError,
@@ -261,6 +394,12 @@ export const InspectorPanel = ({
           onSliderArgumentChange={onSliderArgumentChange}
         />
       ),
+    },
+    {
+      id: 'sounds',
+      label: 'Sounds',
+      icon: <AudioWaveform size={15} aria-hidden="true" />,
+      content: <SoundsPanel sampleServer={sampleServer} />,
     },
     {
       id: 'instructions',

@@ -53,6 +53,15 @@ const defaultSettings: StudioSettings = {
   keepPlayAllSelectionOnClose: false,
 };
 
+const normalizeEditorFontSize = (value: unknown): number => {
+  const size = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(size)) {
+    return defaultStudioTheme.fontSizes.editor;
+  }
+
+  return clamp(size, 10, 28);
+};
+
 const loadStoredTheme = (): StudioTheme => {
   try {
     const storedTheme = window.localStorage.getItem(themeStorageKey);
@@ -72,16 +81,25 @@ const loadStoredTheme = (): StudioTheme => {
         ...defaultStudioTheme.fonts,
         ...(parsed.fonts ?? {}),
       },
+      fontSizes: {
+        ...defaultStudioTheme.fontSizes,
+        editor: normalizeEditorFontSize(parsed.fontSizes?.editor),
+      },
     };
   } catch {
     return defaultStudioTheme;
   }
 };
 
-const createPanelLeaf = (id: string, filePath: string | null): EditorPanelLeaf => ({
+const uniqueFilePaths = (filePaths: Array<string | null | undefined>): string[] => {
+  return [...new Set(filePaths.filter((filePath): filePath is string => Boolean(filePath)))];
+};
+
+const createPanelLeaf = (id: string, filePath: string | null, filePaths?: string[]): EditorPanelLeaf => ({
   type: 'leaf',
   id,
   filePath,
+  filePaths: uniqueFilePaths([...(filePaths ?? []), filePath]),
 });
 
 const toForwardSlashPath = (value: string): string => value.replaceAll('\\', '/');
@@ -230,6 +248,85 @@ const mapPanelLeaves = (
   };
 };
 
+const getPanelFilePaths = (panel: EditorPanelLeaf): string[] => {
+  return uniqueFilePaths([...(panel.filePaths ?? []), panel.filePath]);
+};
+
+const getLayoutFilePaths = (node: EditorPanelNode): string[] => {
+  if (node.type === 'leaf') {
+    return getPanelFilePaths(node);
+  }
+
+  return uniqueFilePaths([
+    ...getLayoutFilePaths(node.children[0]),
+    ...getLayoutFilePaths(node.children[1]),
+  ]);
+};
+
+const layoutHasFilePath = (node: EditorPanelNode, relativePath: string): boolean => {
+  return getLayoutFilePaths(node).includes(relativePath);
+};
+
+const withPanelFile = (panel: EditorPanelLeaf, relativePath: string | null): EditorPanelLeaf => {
+  if (!relativePath) {
+    return { ...panel, filePath: null };
+  }
+
+  return {
+    ...panel,
+    filePath: relativePath,
+    filePaths: uniqueFilePaths([...getPanelFilePaths(panel), relativePath]),
+  };
+};
+
+const attachFilesToPanel = (
+  node: EditorPanelNode,
+  panelId: string,
+  relativePaths: string[],
+): EditorPanelNode => {
+  if (relativePaths.length === 0) {
+    return node;
+  }
+
+  return mapPanelLeaves(node, (panel) => {
+    if (panel.id !== panelId) {
+      return panel;
+    }
+
+    const nextFilePaths = uniqueFilePaths([...getPanelFilePaths(panel), ...relativePaths]);
+    return {
+      ...panel,
+      filePath: panel.filePath ?? nextFilePaths[0] ?? null,
+      filePaths: nextFilePaths,
+    };
+  });
+};
+
+const closeFileInPanel = (
+  node: EditorPanelNode,
+  panelId: string,
+  relativePath: string,
+): EditorPanelNode => {
+  return mapPanelLeaves(node, (panel) => {
+    if (panel.id !== panelId) {
+      return panel;
+    }
+
+    const previousFilePaths = getPanelFilePaths(panel);
+    const closedIndex = previousFilePaths.indexOf(relativePath);
+    const nextFilePaths = previousFilePaths.filter((filePath) => filePath !== relativePath);
+    const nextFilePath = panel.filePath === relativePath
+      ? nextFilePaths[Math.min(Math.max(closedIndex, 0), nextFilePaths.length - 1)] ?? null
+      : panel.filePath;
+
+    return {
+      ...panel,
+      filePath: nextFilePath,
+      filePaths: nextFilePaths,
+    };
+  });
+};
+
 const splitPanelLeaf = (
   node: EditorPanelNode,
   panelId: string,
@@ -286,9 +383,17 @@ const sanitizeSavedLayout = (
     }
 
     if (currentNode.type === 'leaf') {
+      const savedFilePaths = Array.isArray(currentNode.filePaths)
+        ? currentNode.filePaths.filter((filePath) => knownFilePaths.has(filePath))
+        : [];
+      const filePath = currentNode.filePath && knownFilePaths.has(currentNode.filePath)
+        ? currentNode.filePath
+        : savedFilePaths[0] ?? null;
+
       return createPanelLeaf(
         currentNode.id || `panel-${Date.now()}`,
-        currentNode.filePath && knownFilePaths.has(currentNode.filePath) ? currentNode.filePath : null,
+        filePath,
+        savedFilePaths,
       );
     }
 
@@ -458,7 +563,7 @@ export const App = (): JSX.Element => {
   const setPanelFile = useCallback((panelId: string, relativePath: string | null): void => {
     setActivePanelId(panelId);
     setEditorLayout((previous) =>
-      mapPanelLeaves(previous, (panel) => (panel.id === panelId ? { ...panel, filePath: relativePath } : panel)),
+      mapPanelLeaves(previous, (panel) => (panel.id === panelId ? withPanelFile(panel, relativePath) : panel)),
     );
   }, []);
 
@@ -471,7 +576,7 @@ export const App = (): JSX.Element => {
       const activePath = session.activeFilePath && filesByPath[session.activeFilePath]
         ? session.activeFilePath
         : firstOpenFilePath;
-      const nextEditorLayout = sanitizeSavedLayout(
+      let nextEditorLayout = sanitizeSavedLayout(
         session.editorLayout,
         new Set(Object.keys(filesByPath)),
         activePath,
@@ -479,6 +584,10 @@ export const App = (): JSX.Element => {
       const nextActivePanelId = session.activePanelId && findPanelLeaf(nextEditorLayout, session.activePanelId)
         ? session.activePanelId
         : findFirstPanelLeaf(nextEditorLayout).id;
+      const unassignedFilePaths = Object.keys(filesByPath).filter(
+        (relativePath) => !layoutHasFilePath(nextEditorLayout, relativePath),
+      );
+      nextEditorLayout = attachFilesToPanel(nextEditorLayout, nextActivePanelId, unassignedFilePaths);
       const nextActiveFilePath = findPanelLeaf(nextEditorLayout, nextActivePanelId)?.filePath ?? activePath;
 
       setProject(session.project);
@@ -668,16 +777,17 @@ export const App = (): JSX.Element => {
     [openFile, openFilesByPath, project],
   );
 
-  const getReplacementOpenFilePath = useCallback(
-    (closedRelativePath: string): string | null => {
-      return openFiles.find((file) => file.relativePath !== closedRelativePath)?.relativePath ?? null;
-    },
-    [openFiles],
-  );
-
   const handleCloseFile = useCallback(
-    (relativePath: string): void => {
-      const replacementPath = getReplacementOpenFilePath(relativePath);
+    (panelId: string, relativePath: string): void => {
+      const nextLayout = closeFileInPanel(editorLayout, panelId, relativePath);
+      const fileStillVisible = layoutHasFilePath(nextLayout, relativePath);
+
+      setEditorLayout(nextLayout);
+
+      if (fileStillVisible) {
+        return;
+      }
+
       setOpenFilesByPath((previous) => {
         const existing = previous[relativePath];
         if (!existing) {
@@ -698,14 +808,8 @@ export const App = (): JSX.Element => {
         delete next[relativePath];
         return next;
       });
-
-      setEditorLayout((previous) =>
-        mapPanelLeaves(previous, (panel) =>
-          panel.filePath === relativePath ? { ...panel, filePath: replacementPath } : panel,
-        ),
-      );
     },
-    [getReplacementOpenFilePath, settings.keepPlayAllSelectionOnClose],
+    [editorLayout, settings.keepPlayAllSelectionOnClose],
   );
 
   const handleChangeContent = useCallback((relativePath: string, content: string): void => {
@@ -980,12 +1084,40 @@ export const App = (): JSX.Element => {
       return;
     }
 
+    const panelToClose = findPanelLeaf(editorLayout, activePanelId);
+    const panelFilePaths = panelToClose ? getPanelFilePaths(panelToClose) : [];
     const nextLayout = removePanelLeaf(editorLayout, activePanelId);
     if (nextLayout) {
       setEditorLayout(nextLayout);
       setActivePanelId(findFirstPanelLeaf(nextLayout).id);
+
+      const remainingFilePaths = new Set(getLayoutFilePaths(nextLayout));
+      setOpenFilesByPath((previous) => {
+        let changed = false;
+        const next = { ...previous };
+
+        for (const relativePath of panelFilePaths) {
+          if (remainingFilePaths.has(relativePath)) {
+            continue;
+          }
+
+          const existing = next[relativePath];
+          if (!existing) {
+            continue;
+          }
+
+          changed = true;
+          if (settings.keepPlayAllSelectionOnClose) {
+            next[relativePath] = { ...existing, isOpen: false };
+          } else {
+            delete next[relativePath];
+          }
+        }
+
+        return changed ? next : previous;
+      });
     }
-  }, [activePanelId, editorLayout, panelCount]);
+  }, [activePanelId, editorLayout, panelCount, settings.keepPlayAllSelectionOnClose]);
 
   const beginSidebarResize = useCallback(
     (side: 'left' | 'right', event: React.PointerEvent<HTMLDivElement>): void => {
