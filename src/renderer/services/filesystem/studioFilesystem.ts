@@ -1,5 +1,6 @@
 import type {
   CreateFileRequest,
+  DeleteThemeRequest,
   OpenFileState,
   ProjectSessionSnapshot,
   ProjectSnapshot,
@@ -62,6 +63,12 @@ export const importStudioThemeFile = async (): Promise<SaveThemeResult | null> =
 
 export const saveStudioTheme = async (request: SaveThemeRequest): Promise<SaveThemeResult> => {
   return window.studio.saveTheme(request);
+};
+
+export const deleteStudioTheme = async (
+  request: DeleteThemeRequest,
+): Promise<{ themes: StudioThemeSummary[]; themesDirectory: string }> => {
+  return window.studio.deleteTheme(request);
 };
 
 export const revealStudioThemesDirectory = async (): Promise<void> => {

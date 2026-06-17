@@ -21,6 +21,7 @@ const api: StudioApi = {
   listThemes: () => ipcRenderer.invoke(ipcChannels.listThemes),
   importThemeFile: () => ipcRenderer.invoke(ipcChannels.importThemeFile),
   saveTheme: (request) => ipcRenderer.invoke(ipcChannels.saveTheme, request),
+  deleteTheme: (request) => ipcRenderer.invoke(ipcChannels.deleteTheme, request),
   revealThemesDirectory: () => ipcRenderer.invoke(ipcChannels.revealThemesDirectory),
   listSystemFonts: () => ipcRenderer.invoke(ipcChannels.listSystemFonts),
 };

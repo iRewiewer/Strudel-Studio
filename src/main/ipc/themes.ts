@@ -2,6 +2,7 @@ import { dialog, ipcMain, shell } from 'electron';
 import type { SaveThemeRequest } from '../../shared/types';
 import { ipcChannels } from '../../shared/ipc';
 import {
+  deleteThemeFile,
   importThemeFile as importThemeFileFromPath,
   listSystemFontNames,
   listThemeFiles,
@@ -31,6 +32,10 @@ export const registerThemeIpc = (): void => {
 
   ipcMain.handle(ipcChannels.saveTheme, async (_event, request: SaveThemeRequest) => {
     return saveThemeFile(request);
+  });
+
+  ipcMain.handle(ipcChannels.deleteTheme, async (_event, request: { themePath: string }) => {
+    return deleteThemeFile(request.themePath);
   });
 
   ipcMain.handle(ipcChannels.revealThemesDirectory, async () => {

@@ -1,5 +1,6 @@
 import type {
   CreateFileRequest,
+  DeleteThemeRequest,
   ProjectSessionSnapshot,
   ProjectSnapshot,
   ReadFileRequest,
@@ -28,6 +29,7 @@ export type StudioApi = {
   listThemes: () => Promise<{ themes: StudioThemeSummary[]; themesDirectory: string }>;
   importThemeFile: () => Promise<SaveThemeResult | null>;
   saveTheme: (request: SaveThemeRequest) => Promise<SaveThemeResult>;
+  deleteTheme: (request: DeleteThemeRequest) => Promise<{ themes: StudioThemeSummary[]; themesDirectory: string }>;
   revealThemesDirectory: () => Promise<void>;
   listSystemFonts: () => Promise<string[]>;
 };
@@ -48,6 +50,7 @@ export const ipcChannels = {
   listThemes: 'studio:list-themes',
   importThemeFile: 'studio:import-theme-file',
   saveTheme: 'studio:save-theme',
+  deleteTheme: 'studio:delete-theme',
   revealThemesDirectory: 'studio:reveal-themes-directory',
   listSystemFonts: 'studio:list-system-fonts',
 } as const;

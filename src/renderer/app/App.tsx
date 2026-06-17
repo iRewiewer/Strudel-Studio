@@ -45,7 +45,8 @@ import type {
 import { stoppedPlaybackState } from '../types/workbench';
 
 const defaultPanelId = 'panel-1';
-const sidebarMinWidth = 220;
+const leftSidebarMinWidth = 220;
+const rightSidebarMinWidth = 280;
 const sidebarMaxWidth = 520;
 const themeStorageKey = 'strudel-studio:active-theme';
 
@@ -53,10 +54,19 @@ const defaultSettings: StudioSettings = {
   keepPlayAllSelectionOnClose: false,
 };
 
-const normalizeEditorFontSize = (value: unknown): number => {
+const normalizeThemeText = (value: unknown, fallback: string): string => {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+};
+
+const normalizeThemeVersion = (value: unknown): string => {
+  const version = normalizeThemeText(value, defaultStudioTheme.themeVersion);
+  return version.replace(/^v\s*/i, '') || defaultStudioTheme.themeVersion;
+};
+
+const normalizeThemeFontSize = (value: unknown, fallback: number): number => {
   const size = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(size)) {
-    return defaultStudioTheme.fontSizes.editor;
+    return fallback;
   }
 
   return clamp(size, 10, 28);
@@ -70,9 +80,15 @@ const loadStoredTheme = (): StudioTheme => {
     }
 
     const parsed = JSON.parse(storedTheme) as Partial<StudioTheme>;
+    const themeName = normalizeThemeText(parsed.name, defaultStudioTheme.name);
     return {
       version: 1,
-      name: typeof parsed.name === 'string' ? parsed.name : defaultStudioTheme.name,
+      name: themeName,
+      author: normalizeThemeText(
+        parsed.author,
+        themeName === defaultStudioTheme.name ? defaultStudioTheme.author : 'Unknown',
+      ),
+      themeVersion: normalizeThemeVersion(parsed.themeVersion),
       colors: {
         ...defaultStudioTheme.colors,
         ...(parsed.colors ?? {}),
@@ -83,7 +99,8 @@ const loadStoredTheme = (): StudioTheme => {
       },
       fontSizes: {
         ...defaultStudioTheme.fontSizes,
-        editor: normalizeEditorFontSize(parsed.fontSizes?.editor),
+        interface: normalizeThemeFontSize(parsed.fontSizes?.interface, defaultStudioTheme.fontSizes.interface),
+        editor: normalizeThemeFontSize(parsed.fontSizes?.editor, defaultStudioTheme.fontSizes.editor),
       },
     };
   } catch {
@@ -1128,11 +1145,11 @@ export const App = (): JSX.Element => {
 
       const handlePointerMove = (moveEvent: PointerEvent): void => {
         if (side === 'left') {
-          setLeftSidebarWidth(clamp(startLeft + moveEvent.clientX - startX, sidebarMinWidth, sidebarMaxWidth));
+          setLeftSidebarWidth(clamp(startLeft + moveEvent.clientX - startX, leftSidebarMinWidth, sidebarMaxWidth));
           return;
         }
 
-        setRightSidebarWidth(clamp(startRight - (moveEvent.clientX - startX), sidebarMinWidth, sidebarMaxWidth));
+        setRightSidebarWidth(clamp(startRight - (moveEvent.clientX - startX), rightSidebarMinWidth, sidebarMaxWidth));
       };
 
       const handlePointerUp = (): void => {

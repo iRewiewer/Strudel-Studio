@@ -1,5 +1,5 @@
 import { app } from 'electron';
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, extname, join, parse, resolve, sep } from 'node:path';
 import type {
@@ -63,6 +63,15 @@ const normalizeFontSize = (value: unknown, fallback: number): number => {
   return Math.min(Math.max(Math.round(size), 10), 28);
 };
 
+const normalizeThemeText = (value: unknown, fallback: string): string => {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+};
+
+const normalizeThemeVersion = (value: unknown): string => {
+  const version = normalizeThemeText(value, defaultStudioTheme.themeVersion);
+  return version.replace(/^v\s*/i, '') || defaultStudioTheme.themeVersion;
+};
+
 const normalizeTheme = (raw: unknown, fallbackName: string): StudioTheme => {
   const source = isObject(raw) ? raw : {};
   const sourceColors = isObject(source.colors) ? source.colors : {};
@@ -86,7 +95,9 @@ const normalizeTheme = (raw: unknown, fallbackName: string): StudioTheme => {
 
   return {
     version: 1,
-    name: typeof source.name === 'string' && source.name.trim() ? source.name.trim() : fallbackName,
+    name: normalizeThemeText(source.name, fallbackName),
+    author: normalizeThemeText(source.author, 'Unknown'),
+    themeVersion: normalizeThemeVersion(source.themeVersion),
     colors,
     fonts,
     fontSizes,
@@ -174,6 +185,18 @@ export const saveThemeFile = async (request: SaveThemeRequest): Promise<SaveThem
 export const importThemeFile = async (sourcePath: string): Promise<SaveThemeResult> => {
   const sourceTheme = await readThemeFile(sourcePath);
   return saveThemeFile({ theme: sourceTheme, saveAsNew: true });
+};
+
+export const deleteThemeFile = async (
+  themePath: string,
+): Promise<{ themes: StudioThemeSummary[]; themesDirectory: string }> => {
+  const target = assertInsideThemesDirectory(themePath);
+  if (extname(target).toLowerCase() !== '.json') {
+    throw new Error('Only theme JSON files can be deleted.');
+  }
+
+  await unlink(target);
+  return listThemeFiles();
 };
 
 const prettyFontName = (fileName: string): string => {

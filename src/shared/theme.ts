@@ -17,11 +17,13 @@ export const themeColorKeys: ThemeColorKey[] = [
 
 export const themeFontKeys: ThemeFontKey[] = ['interface', 'editor'];
 
-export const themeFontSizeKeys: ThemeFontSizeKey[] = ['editor'];
+export const themeFontSizeKeys: ThemeFontSizeKey[] = ['interface', 'editor'];
 
 export const defaultStudioTheme: StudioTheme = {
   version: 1,
   name: 'Strudel Studio Default',
+  author: 'Strudel Studio',
+  themeVersion: '1.0.0',
   colors: {
     background: '#101312',
     surface: '#171b19',
@@ -41,6 +43,7 @@ export const defaultStudioTheme: StudioTheme = {
     editor: '"Cascadia Code", "Fira Code", Consolas, monospace',
   },
   fontSizes: {
+    interface: 16,
     editor: 15,
   },
 };

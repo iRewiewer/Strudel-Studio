@@ -75,11 +75,13 @@ export type ThemeColorKey =
 
 export type ThemeFontKey = 'interface' | 'editor';
 
-export type ThemeFontSizeKey = 'editor';
+export type ThemeFontSizeKey = 'interface' | 'editor';
 
 export type StudioTheme = {
   version: 1;
   name: string;
+  author: string;
+  themeVersion: string;
   colors: Record<ThemeColorKey, string>;
   fonts: Record<ThemeFontKey, string>;
   fontSizes: Record<ThemeFontSizeKey, number>;
@@ -101,6 +103,10 @@ export type SaveThemeRequest = {
 export type SaveThemeResult = {
   theme: StudioThemeSummary;
   themesDirectory: string;
+};
+
+export type DeleteThemeRequest = {
+  themePath: string;
 };
 
 export type WorkspaceEditorPanelLeaf = {
