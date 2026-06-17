@@ -6,3 +6,5 @@ build/
 *.log
 *.lnk
 .DS_Store
+report/*.pdf
+report/**/*.pdf
