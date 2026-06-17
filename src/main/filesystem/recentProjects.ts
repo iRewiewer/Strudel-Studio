@@ -35,3 +35,13 @@ export const rememberRecentProject = async (projectRoot: string): Promise<void> 
   await mkdir(dirname(recentPath), { recursive: true });
   await writeFile(recentPath, JSON.stringify(next, null, 2), 'utf8');
 };
+
+export const forgetRecentProject = async (projectRoot: string): Promise<RecentProject[]> => {
+  const recentPath = getRecentProjectsPath();
+  const existing = await listRecentProjects();
+  const next = existing.filter((project) => project.rootPath !== projectRoot);
+
+  await mkdir(dirname(recentPath), { recursive: true });
+  await writeFile(recentPath, JSON.stringify(next, null, 2), 'utf8');
+  return next;
+};

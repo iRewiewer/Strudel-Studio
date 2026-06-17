@@ -36,6 +36,8 @@ export type WorkspaceSnapshot = {
   project: ProjectSnapshot;
   openFiles: OpenFileState[];
   activeFilePath: string | null;
+  activePanelId: string | null;
+  editorLayout: WorkspaceEditorPanelNode | null;
   savedAt: string;
   workspacePath: string;
 };
@@ -44,6 +46,8 @@ export type ProjectSessionSnapshot = {
   project: ProjectSnapshot;
   openFiles: OpenFileState[];
   activeFilePath: string | null;
+  activePanelId: string | null;
+  editorLayout: WorkspaceEditorPanelNode | null;
   savedAt: string | null;
   workspacePath: string | null;
 };
@@ -55,6 +59,62 @@ export type RecentProject = {
   lastOpenedAt: string;
 };
 
+export type ThemeColorKey =
+  | 'background'
+  | 'surface'
+  | 'panel'
+  | 'border'
+  | 'primary'
+  | 'primaryText'
+  | 'text'
+  | 'mutedText'
+  | 'warning'
+  | 'danger'
+  | 'editorBackground'
+  | 'editorText';
+
+export type ThemeFontKey = 'interface' | 'editor';
+
+export type StudioTheme = {
+  version: 1;
+  name: string;
+  colors: Record<ThemeColorKey, string>;
+  fonts: Record<ThemeFontKey, string>;
+};
+
+export type StudioThemeSummary = {
+  id: string;
+  name: string;
+  path: string | null;
+  theme: StudioTheme;
+};
+
+export type SaveThemeRequest = {
+  theme: StudioTheme;
+  targetPath?: string | null;
+  saveAsNew?: boolean;
+};
+
+export type SaveThemeResult = {
+  theme: StudioThemeSummary;
+  themesDirectory: string;
+};
+
+export type WorkspaceEditorPanelLeaf = {
+  type: 'leaf';
+  id: string;
+  filePath: string | null;
+};
+
+export type WorkspaceEditorPanelSplit = {
+  type: 'split';
+  id: string;
+  direction: 'vertical' | 'horizontal';
+  children: [WorkspaceEditorPanelNode, WorkspaceEditorPanelNode];
+};
+
+export type WorkspaceEditorPanelNode = WorkspaceEditorPanelLeaf | WorkspaceEditorPanelSplit;
+
 export type WorkspaceFile = {
   version: 1;
   projectRoot: string;
@@ -64,6 +124,8 @@ export type WorkspaceFile = {
     playbackVolume?: number;
   }>;
   activeFilePath: string | null;
+  activePanelId?: string;
+  editorLayout?: WorkspaceEditorPanelNode;
   savedAt: string;
 };
 
@@ -91,6 +153,8 @@ export type SaveWorkspaceRequest = {
     playbackVolume?: number;
   }>;
   activeFilePath: string | null;
+  activePanelId?: string;
+  editorLayout?: WorkspaceEditorPanelNode;
 };
 
 export type StudioError = {

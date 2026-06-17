@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
-import { AlertTriangle, FolderTree, Info, Music, SlidersHorizontal } from 'lucide-react';
+import { AlertTriangle, BookOpen, FolderTree, Info, Music, SlidersHorizontal } from 'lucide-react';
 import type { SampleServerInfo, StudioError } from '../../../shared/types';
 import { SidebarTabs, type SidebarTabDefinition } from '../../components/SidebarTabs';
+import { InstructionLookupPanel } from '../docs/InstructionLookupPanel';
 import {
   findStrudelSliders,
   type StrudelSliderArgumentName,
@@ -12,7 +13,6 @@ import type { EditorFile } from '../../types/workbench';
 type InspectorPanelProps = {
   sampleServer: SampleServerInfo | null;
   playbackError: StudioError | null;
-  workspacePath: string | null;
   activeFile: EditorFile | null;
   sliderValues: Record<string, number>;
   onSliderArgumentChange: (
@@ -25,7 +25,6 @@ type InspectorPanelProps = {
 type InfoPanelProps = {
   sampleServer: SampleServerInfo | null;
   playbackError: StudioError | null;
-  workspacePath: string | null;
 };
 
 type SlidersPanelProps = {
@@ -102,7 +101,6 @@ const EditableSliderNumber = ({
 const InfoPanel = ({
   sampleServer,
   playbackError,
-  workspacePath,
 }: InfoPanelProps): JSX.Element => {
   return (
     <>
@@ -130,16 +128,6 @@ const InfoPanel = ({
         ) : (
           <p className="detail-line">No local samples folder</p>
         )}
-      </section>
-
-      <section className="inspector-section">
-        <div className="section-title">
-          <FolderTree size={16} aria-hidden="true" />
-          <h2>Workspace</h2>
-        </div>
-        <p className="path-label" title={workspacePath ?? undefined}>
-          {workspacePath ?? 'Not saved yet'}
-        </p>
       </section>
 
       {playbackError ? (
@@ -251,7 +239,6 @@ const SlidersPanel = ({
 export const InspectorPanel = ({
   sampleServer,
   playbackError,
-  workspacePath,
   activeFile,
   sliderValues,
   onSliderArgumentChange,
@@ -261,9 +248,7 @@ export const InspectorPanel = ({
       id: 'info',
       label: 'Info',
       icon: <Info size={15} aria-hidden="true" />,
-      content: (
-        <InfoPanel sampleServer={sampleServer} playbackError={playbackError} workspacePath={workspacePath} />
-      ),
+      content: <InfoPanel sampleServer={sampleServer} playbackError={playbackError} />,
     },
     {
       id: 'sliders',
@@ -276,6 +261,12 @@ export const InspectorPanel = ({
           onSliderArgumentChange={onSliderArgumentChange}
         />
       ),
+    },
+    {
+      id: 'instructions',
+      label: 'Docs',
+      icon: <BookOpen size={15} aria-hidden="true" />,
+      content: <InstructionLookupPanel />,
     },
   ];
 

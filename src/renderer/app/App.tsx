@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { OpenFileState, ProjectFile, ProjectSessionSnapshot, ProjectSnapshot, RecentProject } from '../../shared/types';
+import type {
+  OpenFileState,
+  ProjectFile,
+  ProjectSessionSnapshot,
+  ProjectSnapshot,
+  RecentProject,
+  StudioTheme,
+  WorkspaceEditorPanelNode,
+} from '../../shared/types';
+import { defaultStudioTheme } from '../../shared/theme';
 import { EditorPane } from '../features/editor/EditorPane';
 import { FileExplorer } from '../features/files/FileExplorer';
 import { PlaybackControls } from '../features/playback/PlaybackControls';
 import { InspectorPanel } from '../features/sidebar-right/InspectorPanel';
+import { ThemeSelectorModal } from '../features/themes/ThemeSelectorModal';
 import { WelcomeScreen } from '../features/workspace/WelcomeScreen';
 import {
   createStrudelFile,
@@ -12,6 +22,7 @@ import {
   openProjectFolder,
   openRecentProject,
   readProjectFile,
+  removeRecentProject,
   saveProjectFile,
   saveWorkspaceFile,
 } from '../services/filesystem/studioFilesystem';
@@ -21,6 +32,7 @@ import {
   type StrudelSliderArgumentName,
   type StrudelSliderDescriptor,
 } from '../services/strudel/sliderScanner';
+import { applyStudioTheme } from '../services/themes/applyTheme';
 import type {
   EditorFile,
   EditorPanelLeaf,
@@ -35,9 +47,35 @@ import { stoppedPlaybackState } from '../types/workbench';
 const defaultPanelId = 'panel-1';
 const sidebarMinWidth = 220;
 const sidebarMaxWidth = 520;
+const themeStorageKey = 'strudel-studio:active-theme';
 
 const defaultSettings: StudioSettings = {
   keepPlayAllSelectionOnClose: false,
+};
+
+const loadStoredTheme = (): StudioTheme => {
+  try {
+    const storedTheme = window.localStorage.getItem(themeStorageKey);
+    if (!storedTheme) {
+      return defaultStudioTheme;
+    }
+
+    const parsed = JSON.parse(storedTheme) as Partial<StudioTheme>;
+    return {
+      version: 1,
+      name: typeof parsed.name === 'string' ? parsed.name : defaultStudioTheme.name,
+      colors: {
+        ...defaultStudioTheme.colors,
+        ...(parsed.colors ?? {}),
+      },
+      fonts: {
+        ...defaultStudioTheme.fonts,
+        ...(parsed.fonts ?? {}),
+      },
+    };
+  } catch {
+    return defaultStudioTheme;
+  }
 };
 
 const createPanelLeaf = (id: string, filePath: string | null): EditorPanelLeaf => ({
@@ -137,6 +175,8 @@ const getWorkspaceSignature = (
   projectRoot: string,
   activeFilePath: string | null,
   files: EditorFile[],
+  editorLayout: EditorPanelNode,
+  activePanelId: string,
 ): string => {
   const workspaceFiles = files
     .filter((file) => file.isOpen || file.includedInPlayAll)
@@ -150,6 +190,8 @@ const getWorkspaceSignature = (
   return JSON.stringify({
     projectRoot,
     activeFilePath,
+    activePanelId,
+    editorLayout,
     openFiles: workspaceFiles,
   });
 };
@@ -233,11 +275,47 @@ const removePanelLeaf = (node: EditorPanelNode, panelId: string): EditorPanelNod
   return { ...node, children: [left, right] };
 };
 
+const sanitizeSavedLayout = (
+  node: WorkspaceEditorPanelNode | null,
+  knownFilePaths: Set<string>,
+  fallbackFilePath: string | null,
+): EditorPanelNode => {
+  const sanitizeNode = (currentNode: WorkspaceEditorPanelNode | null): EditorPanelNode | null => {
+    if (!currentNode) {
+      return null;
+    }
+
+    if (currentNode.type === 'leaf') {
+      return createPanelLeaf(
+        currentNode.id || `panel-${Date.now()}`,
+        currentNode.filePath && knownFilePaths.has(currentNode.filePath) ? currentNode.filePath : null,
+      );
+    }
+
+    const left = sanitizeNode(currentNode.children[0]);
+    const right = sanitizeNode(currentNode.children[1]);
+    if (!left) {
+      return right;
+    }
+    if (!right) {
+      return left;
+    }
+
+    return {
+      type: 'split',
+      id: currentNode.id || `split-${Date.now()}`,
+      direction: currentNode.direction,
+      children: [left, right],
+    };
+  };
+
+  return sanitizeNode(node) ?? createPanelLeaf(defaultPanelId, fallbackFilePath);
+};
+
 export const App = (): JSX.Element => {
   const playbackService = useRef(new StrudelPlaybackService());
   const lastEvaluatedPlaybackSignature = useRef('');
   const [project, setProject] = useState<WorkbenchProject | null>(null);
-  const [workspacePath, setWorkspacePath] = useState<string | null>(null);
   const [savedWorkspaceSignature, setSavedWorkspaceSignature] = useState<string | null>(null);
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [openFilesByPath, setOpenFilesByPath] = useState<Record<string, EditorFile>>({});
@@ -251,6 +329,8 @@ export const App = (): JSX.Element => {
   const [busy, setBusy] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [playback, setPlayback] = useState<PlaybackState>(stoppedPlaybackState);
+  const [activeTheme, setActiveTheme] = useState<StudioTheme>(() => loadStoredTheme());
+  const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
 
   const allTrackedFiles = useMemo(() => Object.values(openFilesByPath), [openFilesByPath]);
   const openFiles = useMemo(
@@ -270,8 +350,10 @@ export const App = (): JSX.Element => {
   const activeFile = activeFilePath ? openFilesByPath[activeFilePath] ?? null : null;
   const panelCount = countPanelLeaves(editorLayout);
   const currentWorkspaceSignature = useMemo(
-    () => (project ? getWorkspaceSignature(project.rootPath, activeFilePath, allTrackedFiles) : null),
-    [activeFilePath, allTrackedFiles, project],
+    () => (project
+      ? getWorkspaceSignature(project.rootPath, activeFilePath, allTrackedFiles, editorLayout, activePanelId)
+      : null),
+    [activeFilePath, activePanelId, allTrackedFiles, editorLayout, project],
   );
   const workspaceDirty = Boolean(
     project && currentWorkspaceSignature && currentWorkspaceSignature !== savedWorkspaceSignature,
@@ -284,10 +366,59 @@ export const App = (): JSX.Element => {
   }, []);
 
   useEffect(() => {
+    applyStudioTheme(activeTheme);
+    try {
+      window.localStorage.setItem(themeStorageKey, JSON.stringify(activeTheme));
+    } catch {
+      // Local storage can be unavailable in restricted environments; the live theme still applies.
+    }
+  }, [activeTheme]);
+
+  useEffect(() => {
     void refreshRecentProjects().catch((error) => {
       setOperationError(error instanceof Error ? error.message : String(error));
     });
   }, [refreshRecentProjects]);
+
+  const saveCurrentWorkspace = useCallback(
+    async (signatureToSave = currentWorkspaceSignature): Promise<void> => {
+      if (!project || !signatureToSave) {
+        return;
+      }
+
+      const workspaceFiles = allTrackedFiles.filter((file) => file.isOpen || file.includedInPlayAll);
+      await saveWorkspaceFile({
+        projectRoot: project.rootPath,
+        activeFilePath,
+        activePanelId,
+        editorLayout,
+        openFiles: workspaceFiles.map((file) => ({
+          relativePath: file.relativePath,
+          includedInPlayAll: file.includedInPlayAll,
+          playbackVolume: file.playbackVolume,
+        })),
+      });
+
+      setSavedWorkspaceSignature(signatureToSave);
+      await refreshRecentProjects();
+    },
+    [activeFilePath, activePanelId, allTrackedFiles, currentWorkspaceSignature, editorLayout, project, refreshRecentProjects],
+  );
+
+  useEffect(() => {
+    if (!workspaceDirty || !currentWorkspaceSignature) {
+      return undefined;
+    }
+
+    const signatureToSave = currentWorkspaceSignature;
+    const timeout = window.setTimeout(() => {
+      void saveCurrentWorkspace(signatureToSave).catch((error) => {
+        setOperationError(error instanceof Error ? error.message : String(error));
+      });
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [currentWorkspaceSignature, saveCurrentWorkspace, workspaceDirty]);
 
   useEffect(() => {
     playbackService.current.setSampleManifestUrl(project?.sampleServer?.manifestUrl ?? null);
@@ -299,15 +430,30 @@ export const App = (): JSX.Element => {
 
   useEffect(() => {
     return window.studio.onCloseRequested(() => {
-      const shouldClose =
-        !hasUnsavedChangesRef.current ||
-        window.confirm('You have unsaved changes. Are you sure you want to close Strudel Studio?');
+      void (async () => {
+        const shouldClose =
+          !hasUnsavedChangesRef.current ||
+          window.confirm('You have unsaved changes. Are you sure you want to close Strudel Studio?');
 
-      void window.studio.confirmClose(shouldClose).catch((error) => {
+        if (!shouldClose) {
+          await window.studio.confirmClose(false);
+          return;
+        }
+
+        try {
+          if (workspaceDirty && currentWorkspaceSignature) {
+            await saveCurrentWorkspace(currentWorkspaceSignature);
+          }
+          await window.studio.confirmClose(true);
+        } catch (error) {
+          setOperationError(error instanceof Error ? error.message : String(error));
+          await window.studio.confirmClose(false);
+        }
+      })().catch((error) => {
         setOperationError(error instanceof Error ? error.message : String(error));
       });
     });
-  }, []);
+  }, [currentWorkspaceSignature, saveCurrentWorkspace, workspaceDirty]);
 
   const setPanelFile = useCallback((panelId: string, relativePath: string | null): void => {
     setActivePanelId(panelId);
@@ -325,14 +471,30 @@ export const App = (): JSX.Element => {
       const activePath = session.activeFilePath && filesByPath[session.activeFilePath]
         ? session.activeFilePath
         : firstOpenFilePath;
+      const nextEditorLayout = sanitizeSavedLayout(
+        session.editorLayout,
+        new Set(Object.keys(filesByPath)),
+        activePath,
+      );
+      const nextActivePanelId = session.activePanelId && findPanelLeaf(nextEditorLayout, session.activePanelId)
+        ? session.activePanelId
+        : findFirstPanelLeaf(nextEditorLayout).id;
+      const nextActiveFilePath = findPanelLeaf(nextEditorLayout, nextActivePanelId)?.filePath ?? activePath;
 
       setProject(session.project);
-      setWorkspacePath(session.workspacePath);
       setOpenFilesByPath(filesByPath);
       setSliderValuesById({});
-      setEditorLayout(createPanelLeaf(defaultPanelId, activePath));
-      setActivePanelId(defaultPanelId);
-      setSavedWorkspaceSignature(getWorkspaceSignature(session.project.rootPath, activePath, Object.values(filesByPath)));
+      setEditorLayout(nextEditorLayout);
+      setActivePanelId(nextActivePanelId);
+      setSavedWorkspaceSignature(
+        getWorkspaceSignature(
+          session.project.rootPath,
+          nextActiveFilePath,
+          Object.values(filesByPath),
+          nextEditorLayout,
+          nextActivePanelId,
+        ),
+      );
       setPlayback(stoppedPlaybackState);
       setOperationError(null);
       await refreshRecentProjects();
@@ -385,15 +547,32 @@ export const App = (): JSX.Element => {
     [applySession],
   );
 
+  const handleRemoveRecentProject = useCallback(async (projectRoot: string): Promise<void> => {
+    try {
+      setRecentProjects(await removeRecentProject(projectRoot));
+      setOperationError(null);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
   const handleGoHome = useCallback(async (): Promise<void> => {
     await playbackService.current.stop();
+    try {
+      if (workspaceDirty && currentWorkspaceSignature) {
+        await saveCurrentWorkspace(currentWorkspaceSignature);
+      }
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+      return;
+    }
     lastEvaluatedPlaybackSignature.current = '';
     setProject(null);
     setSliderValuesById({});
     setSavedWorkspaceSignature(null);
     setPlayback(stoppedPlaybackState);
     await refreshRecentProjects();
-  }, [refreshRecentProjects]);
+  }, [currentWorkspaceSignature, refreshRecentProjects, saveCurrentWorkspace, workspaceDirty]);
 
   const openFile = useCallback(
     async (relativePath: string, includedInPlayAll = false): Promise<EditorFile | null> => {
@@ -594,32 +773,6 @@ export const App = (): JSX.Element => {
       setOperationError(error instanceof Error ? error.message : String(error));
     }
   }, [dirtyFiles, saveFiles]);
-
-  const handleSaveWorkspace = useCallback(async (): Promise<void> => {
-    if (!project) {
-      return;
-    }
-
-    try {
-      await saveFiles(dirtyFiles);
-      const workspaceFiles = allTrackedFiles.filter((file) => file.isOpen || file.includedInPlayAll);
-      const savedPath = await saveWorkspaceFile({
-        projectRoot: project.rootPath,
-        activeFilePath,
-        openFiles: workspaceFiles.map((file) => ({
-          relativePath: file.relativePath,
-          includedInPlayAll: file.includedInPlayAll,
-          playbackVolume: file.playbackVolume,
-        })),
-      });
-      setWorkspacePath(savedPath);
-      setSavedWorkspaceSignature(getWorkspaceSignature(project.rootPath, activeFilePath, allTrackedFiles));
-      await refreshRecentProjects();
-      setOperationError(null);
-    } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
-    }
-  }, [activeFilePath, allTrackedFiles, dirtyFiles, project, refreshRecentProjects, saveFiles]);
 
   const handlePlaybackVolumeChange = useCallback(
     async (relativePath: string, playbackVolume: number): Promise<void> => {
@@ -869,6 +1022,7 @@ export const App = (): JSX.Element => {
           onNewProject={handleNewProject}
           onOpenProject={handleOpenProject}
           onOpenRecentProject={handleOpenRecentProject}
+          onRemoveRecentProject={handleRemoveRecentProject}
           busy={busy}
         />
         {operationError ? <div className="toast-error">{operationError}</div> : null}
@@ -891,10 +1045,10 @@ export const App = (): JSX.Element => {
         onPanic={handlePanic}
         onSaveActive={handleSaveActive}
         onSaveAll={handleSaveAll}
-        onSaveWorkspace={handleSaveWorkspace}
         onGoHome={handleGoHome}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
+        onOpenThemeSelector={() => setThemeSelectorOpen(true)}
         onSplitVertical={() => handleSplit('vertical')}
         onSplitHorizontal={() => handleSplit('horizontal')}
         onClosePanel={handleClosePanel}
@@ -951,12 +1105,18 @@ export const App = (): JSX.Element => {
         <InspectorPanel
           sampleServer={project.sampleServer}
           playbackError={playback.error}
-          workspacePath={workspacePath}
           activeFile={activeFile}
           sliderValues={sliderValuesById}
           onSliderArgumentChange={handleSliderArgumentChange}
         />
       </div>
+
+      <ThemeSelectorModal
+        open={themeSelectorOpen}
+        activeTheme={activeTheme}
+        onApplyTheme={setActiveTheme}
+        onClose={() => setThemeSelectorOpen(false)}
+      />
 
       {operationError ? <div className="toast-error">{operationError}</div> : null}
     </div>

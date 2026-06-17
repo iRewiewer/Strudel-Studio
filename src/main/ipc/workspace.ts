@@ -15,6 +15,8 @@ export const registerWorkspaceIpc = (): void => {
       projectRoot: request.projectRoot,
       openFiles: request.openFiles,
       activeFilePath: request.activeFilePath,
+      activePanelId: request.activePanelId,
+      editorLayout: request.editorLayout,
       savedAt: new Date().toISOString(),
     };
 

@@ -37,6 +37,8 @@ export const loadWorkspaceSnapshot = async (workspacePath: string): Promise<Work
     project,
     openFiles,
     activeFilePath: workspace.activeFilePath,
+    activePanelId: workspace.activePanelId ?? null,
+    editorLayout: workspace.editorLayout ?? null,
     savedAt: workspace.savedAt,
     workspacePath,
   };
@@ -46,6 +48,8 @@ export const toProjectSession = (snapshot: WorkspaceSnapshot): ProjectSessionSna
   project: snapshot.project,
   openFiles: snapshot.openFiles,
   activeFilePath: snapshot.activeFilePath,
+  activePanelId: snapshot.activePanelId,
+  editorLayout: snapshot.editorLayout,
   savedAt: snapshot.savedAt,
   workspacePath: snapshot.workspacePath,
 });
@@ -55,6 +59,8 @@ export const createEmptyProjectSession = async (projectRoot: string): Promise<Pr
     project: await createProjectSnapshot(projectRoot),
     openFiles: [],
     activeFilePath: null,
+    activePanelId: null,
+    editorLayout: null,
     savedAt: null,
     workspacePath: null,
   };

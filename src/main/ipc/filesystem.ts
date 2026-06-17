@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { ipcChannels } from '../../shared/ipc';
 import type { CreateFileRequest, ProjectSessionSnapshot, ReadFileRequest, SaveFileRequest } from '../../shared/types';
-import { rememberRecentProject, listRecentProjects } from '../filesystem/recentProjects';
+import { forgetRecentProject, rememberRecentProject, listRecentProjects } from '../filesystem/recentProjects';
 import { assertInsideProject, createProjectSnapshot } from '../filesystem/projectFiles';
 import {
   createEmptyProjectSession,
@@ -100,6 +100,10 @@ export const registerFilesystemIpc = (): void => {
 
   ipcMain.handle(ipcChannels.listRecentProjects, async () => {
     return listRecentProjects();
+  });
+
+  ipcMain.handle(ipcChannels.removeRecentProject, async (_event, projectRoot: string) => {
+    return forgetRecentProject(projectRoot);
   });
 
   ipcMain.handle(ipcChannels.createStrudelFile, async (_event, request: CreateFileRequest) => {

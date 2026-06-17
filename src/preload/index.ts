@@ -12,11 +12,17 @@ const api: StudioApi = {
   openProjectFolder: () => ipcRenderer.invoke(ipcChannels.openProjectFolder),
   openRecentProject: (projectRoot) => ipcRenderer.invoke(ipcChannels.openRecentProject, projectRoot),
   listRecentProjects: () => ipcRenderer.invoke(ipcChannels.listRecentProjects),
+  removeRecentProject: (projectRoot) => ipcRenderer.invoke(ipcChannels.removeRecentProject, projectRoot),
   createStrudelFile: (request) => ipcRenderer.invoke(ipcChannels.createStrudelFile, request),
   readFile: (request) => ipcRenderer.invoke(ipcChannels.readFile, request),
   saveFile: (request) => ipcRenderer.invoke(ipcChannels.saveFile, request),
   saveWorkspace: (request) => ipcRenderer.invoke(ipcChannels.saveWorkspace, request),
   loadWorkspace: () => ipcRenderer.invoke(ipcChannels.loadWorkspace),
+  listThemes: () => ipcRenderer.invoke(ipcChannels.listThemes),
+  importThemeFile: () => ipcRenderer.invoke(ipcChannels.importThemeFile),
+  saveTheme: (request) => ipcRenderer.invoke(ipcChannels.saveTheme, request),
+  revealThemesDirectory: () => ipcRenderer.invoke(ipcChannels.revealThemesDirectory),
+  listSystemFonts: () => ipcRenderer.invoke(ipcChannels.listSystemFonts),
 };
 
 contextBridge.exposeInMainWorld('studio', api);

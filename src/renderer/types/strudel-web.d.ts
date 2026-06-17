@@ -3,6 +3,8 @@ declare module '@strudel/web' {
     prototype: Record<string, unknown>;
   };
 
+  export const strudelScope: Record<string, unknown>;
+
   export function evalScope(...modules: Array<Record<string, unknown> | Promise<Record<string, unknown>>>): Promise<unknown[]>;
 
   export function evaluate(code: string, autoplay?: boolean): Promise<unknown>;

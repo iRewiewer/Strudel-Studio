@@ -5,7 +5,10 @@ import type {
   ReadFileRequest,
   RecentProject,
   SaveFileRequest,
+  SaveThemeRequest,
+  SaveThemeResult,
   SaveWorkspaceRequest,
+  StudioThemeSummary,
   WorkspaceSnapshot,
 } from './types';
 
@@ -16,11 +19,17 @@ export type StudioApi = {
   openProjectFolder: () => Promise<ProjectSessionSnapshot | null>;
   openRecentProject: (projectRoot: string) => Promise<ProjectSessionSnapshot | null>;
   listRecentProjects: () => Promise<RecentProject[]>;
+  removeRecentProject: (projectRoot: string) => Promise<RecentProject[]>;
   createStrudelFile: (request: CreateFileRequest) => Promise<ProjectSnapshot>;
   readFile: (request: ReadFileRequest) => Promise<string>;
   saveFile: (request: SaveFileRequest) => Promise<void>;
   saveWorkspace: (request: SaveWorkspaceRequest) => Promise<string>;
   loadWorkspace: () => Promise<WorkspaceSnapshot | null>;
+  listThemes: () => Promise<{ themes: StudioThemeSummary[]; themesDirectory: string }>;
+  importThemeFile: () => Promise<SaveThemeResult | null>;
+  saveTheme: (request: SaveThemeRequest) => Promise<SaveThemeResult>;
+  revealThemesDirectory: () => Promise<void>;
+  listSystemFonts: () => Promise<string[]>;
 };
 
 export const ipcChannels = {
@@ -30,9 +39,15 @@ export const ipcChannels = {
   openProjectFolder: 'studio:open-project-folder',
   openRecentProject: 'studio:open-recent-project',
   listRecentProjects: 'studio:list-recent-projects',
+  removeRecentProject: 'studio:remove-recent-project',
   createStrudelFile: 'studio:create-strudel-file',
   readFile: 'studio:read-file',
   saveFile: 'studio:save-file',
   saveWorkspace: 'studio:save-workspace',
   loadWorkspace: 'studio:load-workspace',
+  listThemes: 'studio:list-themes',
+  importThemeFile: 'studio:import-theme-file',
+  saveTheme: 'studio:save-theme',
+  revealThemesDirectory: 'studio:reveal-themes-directory',
+  listSystemFonts: 'studio:list-system-fonts',
 } as const;

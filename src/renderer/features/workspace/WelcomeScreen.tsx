@@ -1,4 +1,4 @@
-import { Clock3, FolderOpen, Plus } from 'lucide-react';
+import { Clock3, FolderOpen, Plus, X } from 'lucide-react';
 import type { RecentProject } from '../../../shared/types';
 
 type WelcomeScreenProps = {
@@ -6,6 +6,7 @@ type WelcomeScreenProps = {
   onNewProject: () => void;
   onOpenProject: () => void;
   onOpenRecentProject: (projectRoot: string) => void;
+  onRemoveRecentProject: (projectRoot: string) => void;
   busy: boolean;
 };
 
@@ -14,6 +15,7 @@ export const WelcomeScreen = ({
   onNewProject,
   onOpenProject,
   onOpenRecentProject,
+  onRemoveRecentProject,
   busy,
 }: WelcomeScreenProps): JSX.Element => {
   return (
@@ -44,16 +46,27 @@ export const WelcomeScreen = ({
         {recentProjects.length > 0 ? (
           <div className="recent-list">
             {recentProjects.map((project) => (
-              <button
-                type="button"
-                key={project.rootPath}
-                className="recent-project"
-                onClick={() => onOpenRecentProject(project.rootPath)}
-                disabled={busy}
-              >
-                <span>{project.name}</span>
-                <small>{project.rootPath}</small>
-              </button>
+              <div className="recent-project-row" key={project.rootPath}>
+                <button
+                  type="button"
+                  className="recent-project"
+                  onClick={() => onOpenRecentProject(project.rootPath)}
+                  disabled={busy}
+                >
+                  <span>{project.name}</span>
+                  <small>{project.rootPath}</small>
+                </button>
+                <button
+                  type="button"
+                  className="recent-remove"
+                  onClick={() => onRemoveRecentProject(project.rootPath)}
+                  disabled={busy}
+                  title="Remove from recents"
+                  aria-label={`Remove ${project.name} from recents`}
+                >
+                  <X size={15} aria-hidden="true" />
+                </button>
+              </div>
             ))}
           </div>
         ) : (

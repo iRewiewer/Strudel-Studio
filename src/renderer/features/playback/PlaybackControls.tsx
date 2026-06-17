@@ -4,6 +4,7 @@ import {
   FolderOpen,
   Home,
   MoreVertical,
+  Palette,
   PanelTopClose,
   Play,
   Radio,
@@ -28,10 +29,10 @@ type PlaybackControlsProps = {
   onPanic: () => void;
   onSaveActive: () => void;
   onSaveAll: () => void;
-  onSaveWorkspace: () => void;
   onGoHome: () => void;
   onNewProject: () => void;
   onOpenProject: () => void;
+  onOpenThemeSelector: () => void;
   onSplitVertical: () => void;
   onSplitHorizontal: () => void;
   onClosePanel: () => void;
@@ -55,10 +56,10 @@ export const PlaybackControls = ({
   onPanic,
   onSaveActive,
   onSaveAll,
-  onSaveWorkspace,
   onGoHome,
   onNewProject,
   onOpenProject,
+  onOpenThemeSelector,
   onSplitVertical,
   onSplitHorizontal,
   onClosePanel,
@@ -86,6 +87,10 @@ export const PlaybackControls = ({
           <button type="button" onClick={onOpenProject}>
             <FolderOpen size={15} aria-hidden="true" />
             Open Project
+          </button>
+          <button type="button" onClick={onOpenThemeSelector}>
+            <Palette size={15} aria-hidden="true" />
+            Theme Selector
           </button>
         </div>
       </details>
@@ -149,10 +154,6 @@ export const PlaybackControls = ({
             <MoreVertical size={17} aria-hidden="true" />
           </summary>
           <div className="menu-panel align-right">
-            <button type="button" onClick={onSaveWorkspace}>
-              <SaveAll size={15} aria-hidden="true" />
-              Save Workspace
-            </button>
             <label className="menu-check">
               <input
                 type="checkbox"
