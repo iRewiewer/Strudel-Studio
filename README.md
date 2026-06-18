@@ -200,6 +200,12 @@ Treat plugins as code. Only load scripts from sources you trust.
 
 Open **File -> Theme Selector** to use built-in themes or create your own.
 
+![Light theme main view](docs/screenshots/theme-light-main.png)
+
+![Blue theme main view](docs/screenshots/theme-blue-main.png)
+
+![Purple theme main view](docs/screenshots/theme-purple-main.png)
+
 Themes support:
 
 - built-in light/dark/color variants;

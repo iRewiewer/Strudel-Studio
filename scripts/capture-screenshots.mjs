@@ -68,6 +68,84 @@ const recentProjects = [
   },
 ];
 
+const screenshotThemeFonts = {
+  interface: 'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  editor: '"Cascadia Code", "Fira Code", Consolas, monospace',
+};
+
+const screenshotThemeFontSizes = {
+  interface: 16,
+  editor: 15,
+};
+
+const createScreenshotTheme = (name, colors) => ({
+  version: 1,
+  name,
+  author: 'Strudel Studio',
+  themeVersion: '1.0.0',
+  colors: {
+    recentPanel: colors.panel,
+    playbackHighlight: colors.primary,
+    ...colors,
+  },
+  fonts: screenshotThemeFonts,
+  fontSizes: screenshotThemeFontSizes,
+});
+
+const screenshotThemes = [
+  [
+    createScreenshotTheme('Strudel Studio Light', {
+      background: '#f6f8f3',
+      surface: '#ffffff',
+      panel: '#eef3ec',
+      border: '#cad4c6',
+      primary: '#2f7d55',
+      primaryText: '#f7fff8',
+      text: '#17211a',
+      mutedText: '#68766c',
+      warning: '#b46a18',
+      danger: '#c93c3c',
+      editorBackground: '#ffffff',
+      editorText: '#17211a',
+    }),
+    'theme-light-main',
+  ],
+  [
+    createScreenshotTheme('Strudel Studio Blue', {
+      background: '#07111f',
+      surface: '#0d1d31',
+      panel: '#0a1829',
+      border: '#1d3b5d',
+      primary: '#6bb8ff',
+      primaryText: '#031222',
+      text: '#eef7ff',
+      mutedText: '#87a4bd',
+      warning: '#f2bd68',
+      danger: '#ff7070',
+      editorBackground: '#06101c',
+      editorText: '#eef7ff',
+    }),
+    'theme-blue-main',
+  ],
+  [
+    createScreenshotTheme('Strudel Studio Purple', {
+      background: '#100b1d',
+      surface: '#1b1230',
+      panel: '#170f29',
+      border: '#352458',
+      primary: '#c59cff',
+      primaryText: '#1a0736',
+      text: '#f6f0ff',
+      mutedText: '#a99abd',
+      warning: '#e9b563',
+      danger: '#f36f86',
+      editorBackground: '#0d0918',
+      editorText: '#f6f0ff',
+    }),
+    'theme-purple-main',
+  ],
+];
+
 const session = {
   project,
   openFiles: [
@@ -219,11 +297,63 @@ const clickAriaButton = async (window, label) => {
   `);
 };
 
+const closeModal = async (window, selector) => {
+  await window.webContents.executeJavaScript(`
+    (() => {
+      const modal = document.querySelector(${JSON.stringify(selector)});
+      const closeButton = [...(modal?.querySelectorAll('button') ?? [])]
+        .find((button) => button.title === 'Close' || button.getAttribute('aria-label') === 'Close');
+      if (!closeButton) {
+        throw new Error('Close button not found for ${selector}');
+      }
+      closeButton.click();
+    })();
+  `);
+  await waitForExpression(
+    window,
+    `!document.querySelector(${JSON.stringify(selector)}) && !document.querySelector('.modal-backdrop')`,
+    `${selector} closed`,
+  );
+};
+
 const openFileMenu = async (window) => {
   await window.webContents.executeJavaScript(`
     document.querySelector('.menu-dropdown > summary')?.click();
   `);
   await waitForSelector(window, '.menu-panel');
+};
+
+const applyScreenshotTheme = async (window, theme) => {
+  await window.webContents.executeJavaScript(`
+    (() => {
+      const theme = ${JSON.stringify(theme)};
+      const cssVariableByColor = {
+        background: '--studio-background',
+        surface: '--studio-surface',
+        panel: '--studio-panel',
+        recentPanel: '--studio-recent-panel',
+        border: '--studio-border',
+        primary: '--studio-primary',
+        primaryText: '--studio-primary-text',
+        text: '--studio-text',
+        mutedText: '--studio-muted-text',
+        warning: '--studio-warning',
+        danger: '--studio-danger',
+        editorBackground: '--studio-editor-background',
+        editorText: '--studio-editor-text',
+        playbackHighlight: '--studio-playback-highlight',
+      };
+      const root = document.documentElement;
+      for (const [key, variableName] of Object.entries(cssVariableByColor)) {
+        root.style.setProperty(variableName, theme.colors[key]);
+      }
+      root.style.setProperty('--studio-interface-font', theme.fonts.interface);
+      root.style.setProperty('--studio-editor-font', theme.fonts.editor);
+      root.style.setProperty('--studio-interface-font-size', theme.fontSizes.interface + 'px');
+      root.style.setProperty('--studio-editor-font-size', theme.fontSizes.editor + 'px');
+      window.localStorage.setItem('strudel-studio:active-theme', JSON.stringify(theme));
+    })();
+  `);
 };
 
 const capture = async (window, name) => {
@@ -232,14 +362,30 @@ const capture = async (window, name) => {
   await writeFile(join(outputDirectory, `${name}.png`), image.toPNG());
 };
 
+const removeTemporaryDirectory = async (temporaryDirectory) => {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if (attempt === 7) {
+        throw error;
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
+    }
+  }
+};
+
 const main = async () => {
   const temporaryDirectory = await mkdtemp(join(tmpdir(), 'strudel-studio-screenshots-'));
   const preloadPath = join(temporaryDirectory, 'preload.cjs');
+  const userDataDirectory = join(temporaryDirectory, 'user-data');
   await writeFile(preloadPath, preloadSource, 'utf8');
   await rm(outputDirectory, { recursive: true, force: true });
   await mkdir(outputDirectory, { recursive: true });
 
   try {
+    app.setPath('userData', userDataDirectory);
     await app.whenReady();
     const window = new BrowserWindow({
       width: 1440,
@@ -294,9 +440,18 @@ const main = async () => {
     await clickTextButton(window, 'External Samples');
     await waitForSelector(window, '.external-samples-modal');
     await capture(window, 'external-samples-sounds');
+
+    await closeModal(window, '.external-samples-modal');
+    for (const [theme, screenshotName] of screenshotThemes) {
+      await applyScreenshotTheme(window, theme);
+      await clickAriaButton(window, 'Sliders');
+      await waitForSelector(window, '.sidebar-tab-panel[data-tab-id="sliders"]');
+      await capture(window, screenshotName);
+    }
   } finally {
-    await rm(temporaryDirectory, { recursive: true, force: true });
     app.quit();
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+    await removeTemporaryDirectory(temporaryDirectory);
   }
 };
 
