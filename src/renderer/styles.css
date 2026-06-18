@@ -1430,6 +1430,19 @@ button:disabled {
   box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
 }
 
+.options-modal {
+  width: min(560px, calc(100vw - 48px));
+  max-height: min(520px, calc(100vh - 48px));
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  border: 1px solid var(--studio-border);
+  border-radius: 8px;
+  color: var(--studio-text);
+  background: var(--studio-surface);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+}
+
 .theme-modal-header,
 .theme-modal-footer {
   min-width: 0;
@@ -1467,6 +1480,77 @@ button:disabled {
   gap: 14px;
   overflow: hidden;
   padding: 16px;
+}
+
+.options-body {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+  padding: 16px;
+}
+
+.option-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--studio-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--studio-panel) 72%, var(--studio-surface));
+}
+
+.option-row span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.option-row strong {
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.option-row small {
+  color: var(--studio-muted-text);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.option-row input {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  appearance: none;
+  border: 1px solid var(--studio-border);
+  border-radius: 999px;
+  background: var(--studio-background);
+  cursor: pointer;
+}
+
+.option-row input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--studio-muted-text);
+  transition: transform 120ms ease, background 120ms ease;
+}
+
+.option-row input:checked {
+  border-color: var(--studio-primary);
+  background: color-mix(in srgb, var(--studio-primary) 30%, var(--studio-background));
+}
+
+.option-row input:checked::after {
+  transform: translateX(20px);
+  background: var(--studio-primary);
 }
 
 .external-samples-toolbar {
@@ -2022,6 +2106,11 @@ button:disabled {
   .external-samples-modal {
     width: calc(100vw - 24px);
     height: calc(100vh - 24px);
+  }
+
+  .options-modal {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
   }
 
   .theme-modal-body {

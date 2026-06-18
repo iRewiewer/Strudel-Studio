@@ -124,4 +124,5 @@ export const toOpenFileState = (file: OpenFileState): OpenFileState => ({
   content: file.content,
   includedInPlayAll: file.includedInPlayAll,
   playbackVolume: file.playbackVolume,
+  isOpen: file.isOpen,
 });

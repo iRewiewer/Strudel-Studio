@@ -44,6 +44,8 @@ export type EditorPanelNode = EditorPanelLeaf | EditorPanelSplit;
 
 export type StudioSettings = {
   keepPlayAllSelectionOnClose: boolean;
+  openFileOnInclude: boolean;
+  liveReevaluate: boolean;
 };
 
 export const stoppedPlaybackState: PlaybackState = {

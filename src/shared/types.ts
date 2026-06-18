@@ -30,6 +30,7 @@ export type OpenFileState = {
   content: string;
   includedInPlayAll: boolean;
   playbackVolume: number;
+  isOpen?: boolean;
 };
 
 export type WorkspaceSnapshot = {
@@ -160,6 +161,7 @@ export type WorkspaceFile = {
     relativePath: string;
     includedInPlayAll: boolean;
     playbackVolume?: number;
+    isOpen?: boolean;
   }>;
   activeFilePath: string | null;
   activePanelId?: string;
@@ -189,6 +191,7 @@ export type SaveWorkspaceRequest = {
     relativePath: string;
     includedInPlayAll: boolean;
     playbackVolume?: number;
+    isOpen?: boolean;
   }>;
   activeFilePath: string | null;
   activePanelId?: string;

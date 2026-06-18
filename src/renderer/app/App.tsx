@@ -13,6 +13,7 @@ import type {
 import { defaultStudioTheme } from '../../shared/theme';
 import { EditorPane } from '../features/editor/EditorPane';
 import { FileExplorer } from '../features/files/FileExplorer';
+import { OptionsModal } from '../features/options/OptionsModal';
 import { PlaybackControls } from '../features/playback/PlaybackControls';
 import { PluginManagerModal, type PluginLoadState } from '../features/plugins/PluginManagerModal';
 import { ExternalSamplesModal } from '../features/samples/ExternalSamplesModal';
@@ -62,6 +63,7 @@ import type {
   EditorPanelNode,
   EditorSplitDirection,
   PlaybackState,
+  StudioSettings,
   WorkbenchProject,
 } from '../types/workbench';
 import { stoppedPlaybackState } from '../types/workbench';
@@ -72,8 +74,13 @@ const rightSidebarMinWidth = 280;
 const sidebarMaxWidth = 520;
 const collapsedSidebarWidth = 44;
 const themeStorageKey = 'strudel-studio:active-theme';
+const settingsStorageKey = 'strudel-studio:settings';
 
-const keepPlayAllSelectionOnClose = false;
+const defaultStudioSettings: StudioSettings = {
+  keepPlayAllSelectionOnClose: true,
+  openFileOnInclude: false,
+  liveReevaluate: true,
+};
 
 const normalizeThemeText = (value: unknown, fallback: string): string => {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -129,6 +136,33 @@ const loadStoredTheme = (): StudioTheme => {
   }
 };
 
+const loadStoredSettings = (): StudioSettings => {
+  try {
+    const storedSettings = window.localStorage.getItem(settingsStorageKey);
+    if (!storedSettings) {
+      return defaultStudioSettings;
+    }
+
+    const parsed = JSON.parse(storedSettings) as Partial<StudioSettings>;
+    return {
+      keepPlayAllSelectionOnClose:
+        typeof parsed.keepPlayAllSelectionOnClose === 'boolean'
+          ? parsed.keepPlayAllSelectionOnClose
+          : defaultStudioSettings.keepPlayAllSelectionOnClose,
+      openFileOnInclude:
+        typeof parsed.openFileOnInclude === 'boolean'
+          ? parsed.openFileOnInclude
+          : defaultStudioSettings.openFileOnInclude,
+      liveReevaluate:
+        typeof parsed.liveReevaluate === 'boolean'
+          ? parsed.liveReevaluate
+          : defaultStudioSettings.liveReevaluate,
+    };
+  } catch {
+    return defaultStudioSettings;
+  }
+};
+
 const uniqueFilePaths = (filePaths: Array<string | null | undefined>): string[] => {
   return [...new Set(filePaths.filter((filePath): filePath is string => Boolean(filePath)))];
 };
@@ -171,6 +205,7 @@ const createEditorFile = (
   content: string,
   includedInPlayAll: boolean,
   playbackVolume = 1,
+  isOpen = true,
 ): EditorFile => {
   const metadata = findProjectFile(project, relativePath);
   const name = getFileName(relativePath);
@@ -187,7 +222,7 @@ const createEditorFile = (
     dirty: false,
     includedInPlayAll,
     playbackVolume,
-    isOpen: true,
+    isOpen,
   };
 };
 
@@ -199,6 +234,7 @@ const createEditorFilesFromSession = (session: ProjectSessionSnapshot): Record<s
       file.content,
       file.includedInPlayAll,
       file.playbackVolume,
+      file.isOpen ?? true,
     );
     return accumulator;
   }, {});
@@ -240,6 +276,7 @@ const getWorkspaceSignature = (
       relativePath: file.relativePath,
       includedInPlayAll: file.includedInPlayAll,
       playbackVolume: file.playbackVolume,
+      isOpen: file.isOpen,
     }))
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 
@@ -478,6 +515,8 @@ export const App = (): JSX.Element => {
   const [operationError, setOperationError] = useState<string | null>(null);
   const [playback, setPlayback] = useState<PlaybackState>(stoppedPlaybackState);
   const [activeTheme, setActiveTheme] = useState<StudioTheme>(() => loadStoredTheme());
+  const [settings, setSettings] = useState<StudioSettings>(() => loadStoredSettings());
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
   const [externalSamplesOpen, setExternalSamplesOpen] = useState(false);
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
@@ -551,6 +590,14 @@ export const App = (): JSX.Element => {
   }, [activeTheme]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
+    } catch {
+      // Local storage can be unavailable in restricted environments; the in-memory settings still apply.
+    }
+  }, [settings]);
+
+  useEffect(() => {
     const service = playbackService.current;
     service.setPlaybackHighlightListener(setPlaybackHighlightRangesByPath);
     return () => service.setPlaybackHighlightListener(null);
@@ -578,6 +625,7 @@ export const App = (): JSX.Element => {
           relativePath: file.relativePath,
           includedInPlayAll: file.includedInPlayAll,
           playbackVolume: file.playbackVolume,
+          isOpen: file.isOpen,
         })),
       });
 
@@ -649,19 +697,22 @@ export const App = (): JSX.Element => {
       await playbackService.current.stop();
       lastEvaluatedPlaybackSignature.current = '';
       const filesByPath = createEditorFilesFromSession(session);
-      const firstOpenFilePath = Object.values(filesByPath)[0]?.relativePath ?? null;
-      const activePath = session.activeFilePath && filesByPath[session.activeFilePath]
+      const visibleFilePaths = Object.values(filesByPath)
+        .filter((file) => file.isOpen)
+        .map((file) => file.relativePath);
+      const firstOpenFilePath = visibleFilePaths[0] ?? null;
+      const activePath = session.activeFilePath && visibleFilePaths.includes(session.activeFilePath)
         ? session.activeFilePath
         : firstOpenFilePath;
       let nextEditorLayout = sanitizeSavedLayout(
         session.editorLayout,
-        new Set(Object.keys(filesByPath)),
+        new Set(visibleFilePaths),
         activePath,
       );
       const nextActivePanelId = session.activePanelId && findPanelLeaf(nextEditorLayout, session.activePanelId)
         ? session.activePanelId
         : findFirstPanelLeaf(nextEditorLayout).id;
-      const unassignedFilePaths = Object.keys(filesByPath).filter(
+      const unassignedFilePaths = visibleFilePaths.filter(
         (relativePath) => !layoutHasFilePath(nextEditorLayout, relativePath),
       );
       nextEditorLayout = attachFilesToPanel(nextEditorLayout, nextActivePanelId, unassignedFilePaths);
@@ -833,27 +884,54 @@ export const App = (): JSX.Element => {
         return;
       }
 
-      if (!openFilesByPath[relativePath]) {
-        await openFile(relativePath, includedInPlayAll);
+      const existing = openFilesByPath[relativePath];
+      if (!existing) {
+        const content = await readProjectFile(project.rootPath, relativePath);
+        const trackedFile = createEditorFile(
+          project,
+          relativePath,
+          content,
+          includedInPlayAll,
+          1,
+          includedInPlayAll && settings.openFileOnInclude,
+        );
+        setOpenFilesByPath((previous) => ({ ...previous, [relativePath]: trackedFile }));
+        if (trackedFile.isOpen) {
+          setPanelFile(activePanelId, relativePath);
+        }
         return;
       }
 
+      const shouldOpenFile = includedInPlayAll && settings.openFileOnInclude;
       setOpenFilesByPath((previous) => {
-        const existing = previous[relativePath];
-        if (!existing) {
+        const current = previous[relativePath];
+        if (!current) {
           return previous;
+        }
+
+        const nextFile = {
+          ...current,
+          includedInPlayAll,
+          isOpen: current.isOpen || shouldOpenFile,
+        };
+
+        if (!nextFile.isOpen && !nextFile.includedInPlayAll && !nextFile.dirty) {
+          const next = { ...previous };
+          delete next[relativePath];
+          return next;
         }
 
         return {
           ...previous,
-          [relativePath]: {
-            ...existing,
-            includedInPlayAll,
-          },
+          [relativePath]: nextFile,
         };
       });
+
+      if (shouldOpenFile) {
+        setPanelFile(activePanelId, relativePath);
+      }
     },
-    [openFile, openFilesByPath, project],
+    [activePanelId, openFilesByPath, project, setPanelFile, settings.openFileOnInclude],
   );
 
   const handleCloseFile = useCallback(
@@ -873,7 +951,7 @@ export const App = (): JSX.Element => {
           return previous;
         }
 
-        if (keepPlayAllSelectionOnClose) {
+        if (settings.keepPlayAllSelectionOnClose) {
           return {
             ...previous,
             [relativePath]: {
@@ -888,7 +966,7 @@ export const App = (): JSX.Element => {
         return next;
       });
     },
-    [editorLayout],
+    [editorLayout, settings.keepPlayAllSelectionOnClose],
   );
 
   const handleChangeContent = useCallback((relativePath: string, content: string): void => {
@@ -1496,7 +1574,7 @@ export const App = (): JSX.Element => {
   }, [playback.status]);
 
   useEffect(() => {
-    if (playback.status !== 'playing') {
+    if (!settings.liveReevaluate || playback.status !== 'playing') {
       return undefined;
     }
 
@@ -1540,6 +1618,7 @@ export const App = (): JSX.Element => {
     playback.status,
     recordPlaybackError,
     setPlayingState,
+    settings.liveReevaluate,
   ]);
 
   const handleSplit = useCallback(
@@ -1579,7 +1658,7 @@ export const App = (): JSX.Element => {
           }
 
           changed = true;
-          if (keepPlayAllSelectionOnClose) {
+          if (settings.keepPlayAllSelectionOnClose) {
             next[relativePath] = { ...existing, isOpen: false };
           } else {
             delete next[relativePath];
@@ -1589,7 +1668,7 @@ export const App = (): JSX.Element => {
         return changed ? next : previous;
       });
     }
-  }, [activePanelId, editorLayout, panelCount]);
+  }, [activePanelId, editorLayout, panelCount, settings.keepPlayAllSelectionOnClose]);
 
   const beginSidebarResize = useCallback(
     (side: 'left' | 'right', event: React.PointerEvent<HTMLDivElement>): void => {
@@ -1650,6 +1729,7 @@ export const App = (): JSX.Element => {
         onGoHome={handleGoHome}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
+        onOpenOptions={() => setOptionsOpen(true)}
         onOpenExternalSamples={() => setExternalSamplesOpen(true)}
         onOpenPluginManager={handleOpenPluginManager}
         onOpenThemeSelector={() => setThemeSelectorOpen(true)}
@@ -1726,6 +1806,13 @@ export const App = (): JSX.Element => {
           onToggleCollapsed={() => setRightSidebarCollapsed((previous) => !previous)}
         />
       </div>
+
+      <OptionsModal
+        open={optionsOpen}
+        settings={settings}
+        onChangeSettings={setSettings}
+        onClose={() => setOptionsOpen(false)}
+      />
 
       <ThemeSelectorModal
         open={themeSelectorOpen}

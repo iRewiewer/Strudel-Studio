@@ -6,108 +6,84 @@
 
 **Strudel Studio is a local-first desktop studio for Strudel live coding.**
 
-It keeps the immediacy of Strudel while adding the workflow pieces you expect from a desktop music tool: real project folders, real `.strudel` files, saved workspaces, multi-file playback, local samples, editor tabs, live updates, per-file volume controls, and sidebar sliders for `slider(...)` values.
+It keeps Strudel fast and improvisational, while adding the desktop workflow pieces needed for a larger set: project folders, real `.strudel` files, saved workspaces, split editor panes, multi-file playback, local samples, external sample packs, runtime plugins, themes, and app options.
 
-Strudel Studio is built for performers and pattern writers who want to keep their Strudel sketches organized without giving up fast feedback.
+## Screenshots
+
+![Main menu with recent projects](docs/screenshots/main-menu.png)
+
+![Main app overview with split editors and sliders](docs/screenshots/app-overview.png)
+
+![Theme selector with docs sidebar](docs/screenshots/theme-selector-docs.png)
+
+![External samples with sounds sidebar](docs/screenshots/external-samples-sounds.png)
 
 ## Features
 
-- **Local-first projects**: choose a project folder and work with normal files on disk.
-- **Real `.strudel` files**: create, open, edit, and save Strudel files directly.
-- **Workspace restore**: save open files, Play All selection, file volumes, and workspace state.
-- **Recent projects**: quickly return to previous Strudel Studio projects.
-- **Tabbed editor**: keep multiple patterns open at once.
-- **Middle-click tab close**: close editor tabs with the same gesture used by many code editors.
-- **Split editor panels**: split the editor vertically or horizontally and close panels as needed.
-- **Syntax highlighting**: Strudel code is edited with a CodeMirror-based JavaScript editor.
-- **Single-file playback**: play the active file.
-- **Play All**: check multiple files and perform them together.
-- **Live re-evaluation**: edit while playback is running and hear changes update automatically.
-- **Per-file volume**: adjust each checked file from the project sidebar.
-- **Sidebar sliders**: inspect `slider(...)` calls in the active file and edit value, min, max, and step without leaving the sidebar.
-- **Local sample serving**: project sample metadata is served to the Strudel runtime when available.
-- **Stop and panic controls**: stop playback normally or reset more aggressively during performance.
-- **Error mapping**: Strudel evaluation errors are shown with file and line information when possible.
-- **Desktop packaging**: Windows installer/portable builds, plus macOS and Linux targets.
+- **Local-first projects**: create or open normal folders on disk.
+- **Real `.strudel` files**: create, edit, save, and reopen project files directly.
+- **Automatic sample folder**: new projects get an empty `samples/` folder.
+- **Workspace restore**: restores open tabs, split layout, active file, Play All selection, per-file volume, and hidden-but-enabled files.
+- **Recent projects**: reopen recent work from the start screen.
+- **Tabbed and split editor**: open multiple files, split panes vertically or horizontally, and close panes independently.
+- **Play active file**: perform the currently selected file.
+- **Play All**: check multiple files in the left sidebar and play them together.
+- **Per-file volume**: each tracked file has its own Play All volume slider.
+- **Live re-evaluation**: playing files re-evaluate while you edit, unless disabled in Options.
+- **Immediate stop**: the Stop button hushes playback and resets global effects.
+- **Playback highlighting**: fired Strudel mini-notation source locations are outlined in the editor.
+- **Syntax error indicators**: tabs and file rows show an error marker with the hoverable reason.
+- **Right sidebar views**: playback info, sliders, sounds, and docs.
+- **Slider editor**: detected `slider(...)` calls can be edited from the sidebar, including value, min, max, and step.
+- **Sound browser**: browse and preview supported sounds, including loaded external sample names.
+- **Docs browser**: searchable Strudel instruction lookup generated from the installed Strudel runtime sources.
+- **External samples**: add, load, unload, remove, cache, and browse external `strudel.json` sample packs.
+- **Local sample serving**: project sample metadata is served to Strudel from the project `samples/` folder when available.
+- **Plugin support**: folder/source-based scripts can be added, loaded, unloaded, and removed.
+- **Theme selector**: built-in themes, custom themes, duplicate/delete, font search, font sizes, and editable colors including recent panel and playback highlight colors.
+- **Options panel**: File -> Options controls file-selection behavior and live re-evaluation.
+- **Packaged desktop builds**: Windows, macOS, and Linux packaging through Electron Builder.
 
-## Install
+## Running A Release Build
 
-The easiest way to use Strudel Studio is to download a packaged build from the project releases when available.
+Download the correct artifact for your operating system from a release, or use files produced in `build/bin` after a local package build.
 
 ### Windows
 
-Use one of these release artifacts:
+Use one of:
 
-- `Strudel Studio-Setup-0.8.0-win-x64.exe` for a normal installer.
-- `Strudel Studio-Portable-0.8.0-win-x64.exe` for a portable app.
-
-After building locally, the quickest test executable is:
-
-```text
-build\win-unpacked\Strudel Studio.exe
-```
+- `Strudel Studio-Setup-1.0.0-win-x64.exe` for the installer.
+- `Strudel Studio-Portable-1.0.0-win-x64.exe` for the portable app.
 
 ### macOS
 
-Use the `.dmg` or `.zip` artifact when available. Current local builds are unsigned, so macOS may require explicit approval in System Settings.
+Use the `.dmg` artifact, or the `.zip` if you prefer extracting the app manually.
+
+Current local builds are unsigned. macOS may require explicit approval in System Settings before first launch.
 
 ### Linux
 
-Use the `.AppImage` or `.deb` artifact when available.
+Use one of:
 
-## Quick Start
+- `Strudel Studio-1.0.0-linux-x64.AppImage`
+- `Strudel Studio-1.0.0-linux-x64.deb`
 
-1. Open Strudel Studio.
-2. Click **New Project** and choose a folder.
-3. Create `drums.strudel`.
-4. Write a pattern:
+For AppImage:
 
-   ```js
-   $: s("bd*4")
-   ```
-
-5. Press **Play**.
-6. Create `bass.strudel`.
-7. Write another pattern:
-
-   ```js
-   $: note("c2 eb2 g2").s("sawtooth")
-   ```
-
-8. Check both files in the left sidebar.
-9. Press **Play All**.
-10. Move file volume sliders or open the **Sliders** sidebar tab for `slider(...)` controls.
-11. Save files and save the workspace.
-
-## Using Sidebar Sliders
-
-Any numeric Strudel `slider(...)` call in the active file appears in the right sidebar under **Sliders**.
-
-Example:
-
-```js
-$: note("c2 eb2 g2")
-  .s("sawtooth")
-  .attack(slider(0.03, 0, 0.2, 0.01))
-  .legato(slider(1.2, 0, 5, 0.1))
+```sh
+chmod +x "Strudel Studio-1.0.0-linux-x64.AppImage"
+./"Strudel Studio-1.0.0-linux-x64.AppImage"
 ```
 
-The sidebar lets you:
+For Debian/Ubuntu:
 
-- move the current slider value;
-- edit `min`, `max`, and `step` on hover;
-- update the source code automatically;
-- hear changes while playback is running.
+```sh
+sudo apt install ./Strudel\ Studio-1.0.0-linux-x64.deb
+```
 
-## Local Samples
+## Running From Source
 
-Strudel Studio is designed around project folders. When a project has local sample metadata available, the app serves that metadata to the Strudel runtime so patterns can reference local sample names.
-
-Sample support is still an MVP feature. Keep sample folders inside the project so the workspace remains portable.
-
-## Build From Source
-
-Install [Node.js LTS](https://nodejs.org/), then clone the repository and install dependencies:
+Install Node.js LTS, clone the repository, then install dependencies:
 
 ```sh
 npm install
@@ -119,89 +95,163 @@ Run the development app:
 npm run dev
 ```
 
-Build the renderer/main process only:
+Build the Electron main/preload/renderer output:
 
 ```sh
 npm run build
 ```
 
-Create an unpacked desktop build:
+Preview the built app:
 
 ```sh
-npm run package:dir
+npm run preview
 ```
 
-## One-Click Build Scripts
+## Build Commands
 
-Build output goes to the `build/` folder. The scripts clean old build output first so stale installers do not sit beside fresh ones.
+The package commands write Electron Builder output to `build/`. Final distributable artifacts are copied into `build/bin`; intermediate folders such as unpacked apps and blockmaps can remain in `build/`.
+
+```sh
+npm run package:dir    # unpacked app for local inspection
+npm run package:win    # Windows installer and portable exe
+npm run package:mac    # macOS dmg and zip
+npm run package:linux  # Linux AppImage and deb
+npm run package:all    # attempts all configured targets
+```
+
+The lower-level build command is:
+
+```sh
+npm run build:app
+```
+
+It runs TypeScript checking and `electron-vite build`, but does not package installers.
+
+## Build Scripts
+
+Use the scripts if you want the simple release flow.
 
 ### Windows
 
-Double-click:
-
-```text
+```bat
 build-all.bat
 ```
 
-This builds the Windows installer and portable `.exe`, then tries Linux packaging if the host machine supports it.
+The batch script:
 
-### macOS and Linux
+- removes the old `build/` folder;
+- runs `npm install`;
+- builds the app;
+- creates Windows installer and portable artifacts;
+- copies final artifacts into `build/bin`;
+- tries Linux packaging if the host supports it.
 
-Run:
+### macOS / Linux
 
 ```sh
 sh build-all.sh
 ```
 
-The practical release flow is:
+On macOS it builds macOS packages first, then tries Windows/Linux where possible. On Linux it builds Linux packages first, then tries Windows where possible.
 
-- Build Windows packages on Windows.
-- Build macOS packages on macOS.
-- Build Linux packages on Linux.
+macOS packages should be built on macOS. Windows packages are most reliable on Windows. Linux packages are most reliable on Linux or a Linux CI runner.
 
-Cross-building every operating system from one machine is not fully reliable. macOS packages should be built on macOS because Apple packaging, signing, and notarization are platform-specific.
+## Project Workflow
 
-## Packaging Targets
+1. Start Strudel Studio.
+2. Create or open a project folder.
+3. Create `.strudel` files from the left sidebar.
+4. Press **Play** to run the active file.
+5. Check files in the left sidebar and press **Play All** to run them together.
+6. Adjust file volumes from the left sidebar.
+7. Use the right sidebar for playback info, sliders, sounds, and docs.
+8. Save files with **Save** / **Save All**. Workspace state autosaves.
 
-- Windows: NSIS installer and portable `.exe`.
-- macOS: `.dmg` and `.zip`.
-- Linux: `.AppImage` and `.deb`.
+By default, checking a file for Play All does not open it in the editor, and closing the last tab of an enabled file does not disable it. Change this in **File -> Options**.
 
-Current packages are unsigned. Code signing, notarization, release automation, and auto-update are good next steps for public distribution.
+## Samples
 
-## Project Status
+Every new project gets a `samples/` folder. Keep local sample files and sample metadata there so the project remains portable.
 
-Strudel Studio is currently an MVP desktop app. The core workflow is usable:
+External sample packs can be managed from **File -> External Samples**. The panel supports:
 
-- create a project;
-- create and edit Strudel files;
-- play one file;
-- play multiple selected files together;
-- update playback while editing;
-- save files and workspaces;
-- reopen projects and restore workspace state.
+- adding a URL or GitHub source;
+- loading and unloading packs;
+- removing pack entries;
+- caching referenced audio files;
+- opening the external samples folder;
+- previewing loaded sounds from the Sounds sidebar tab.
 
-Planned improvements include visual Strudel widgets, stronger sample management, richer Strudel autocomplete/snippets, persistent settings, and a smoother release pipeline.
+## Plugins
 
-## License And Commercial Use
+Plugins are folder/source-based scripts that are evaluated into the Strudel runtime. Manage them from **File -> Plugins**.
+
+The plugin panel supports:
+
+- adding a source URL/GitHub repo;
+- importing a local plugin folder;
+- loading and unloading scripts;
+- removing plugin entries;
+- opening the plugins folder.
+
+Treat plugins as code. Only load scripts from sources you trust.
+
+## Themes
+
+Open **File -> Theme Selector** to use built-in themes or create your own.
+
+Themes support:
+
+- built-in light/dark/color variants;
+- duplicate, save, and delete for custom themes;
+- author and version metadata;
+- interface and editor fonts;
+- interface and editor font sizes;
+- font search;
+- editable UI/editor colors;
+- recent project panel color;
+- playback highlight color.
+
+Built-in themes cannot be saved over or deleted. Duplicate one first if you want to customize it.
+
+## Options
+
+Open **File -> Options**.
+
+Current options:
+
+- **Keep enabled files after closing tabs**: closing the last visible tab hides the file but keeps it included in Play All.
+- **Open files when enabling Play All**: checking a file also opens it in the active editor panel.
+- **Live re-evaluate while playing**: edits to playing files are sent to Strudel automatically.
+
+Options are saved locally on the machine.
+
+## Screenshots For Docs
+
+Screenshots in `docs/screenshots` are generated with a deterministic mock project:
+
+```sh
+npm run screenshots
+```
+
+The script builds the app, launches the renderer in Electron, captures the PNGs, and exits.
+
+## Notes
+
+- Packaged builds are currently unsigned.
+- Auto-update is not implemented.
+- External sample and plugin loading can execute or fetch third-party content; use trusted sources.
+- This app embeds Strudel runtime packages through npm dependencies.
+
+## License
 
 Strudel Studio is licensed under **AGPL-3.0-or-later**.
 
-In practical terms:
+You may distribute builds for free or for money, but recipients keep their AGPL rights to inspect, modify, build, and redistribute the software. If you distribute binaries, provide the corresponding source code under the AGPL. If you run a modified network-accessible version, users must be offered the corresponding source code.
 
-- You may distribute builds for free or for money.
-- You may charge for official builds, convenience, support, documentation, services, or warranty.
-- Recipients keep their AGPL rights to inspect, modify, build, and redistribute the software.
-- If you distribute binaries, you must provide the corresponding source code under the AGPL.
-- If you run a modified network-accessible version, users must be offered the corresponding source code.
+See [LICENSE](LICENSE) for the full license text.
 
-That means a paid official build is allowed, but it is not proprietary software. A good commercial model is to charge for convenience and trust: signed installers, tested releases, support, docs, sample packs you have rights to distribute, and ongoing development.
+## Links
 
-Donation, pay-what-you-want, paid official binaries, sponsorship, and support plans are all compatible with the spirit of this project. For legal decisions, read the AGPL text and consult a lawyer if money or customer contracts are involved.
-
-## Source
-
-The source code and license are included in this repository.
-
-- License: [GNU Affero General Public License v3](LICENSE)
 - Strudel: [strudel.cc](https://strudel.cc/)
+- License: [GNU Affero General Public License v3](LICENSE)

@@ -13,6 +13,7 @@ import {
   Rows2,
   Save,
   SaveAll,
+  Settings,
   Square,
 } from 'lucide-react';
 import type { PlaybackState } from '../../types/workbench';
@@ -31,6 +32,7 @@ type PlaybackControlsProps = {
   onGoHome: () => void;
   onNewProject: () => void;
   onOpenProject: () => void;
+  onOpenOptions: () => void;
   onOpenExternalSamples: () => void;
   onOpenPluginManager: () => void;
   onOpenThemeSelector: () => void;
@@ -57,6 +59,7 @@ export const PlaybackControls = ({
   onGoHome,
   onNewProject,
   onOpenProject,
+  onOpenOptions,
   onOpenExternalSamples,
   onOpenPluginManager,
   onOpenThemeSelector,
@@ -123,6 +126,10 @@ export const PlaybackControls = ({
           <button type="button" onClick={() => { closeFileMenu(); onOpenProject(); }}>
             <FolderOpen size={15} aria-hidden="true" />
             Open Project
+          </button>
+          <button type="button" onClick={() => { closeFileMenu(); onOpenOptions(); }}>
+            <Settings size={15} aria-hidden="true" />
+            Options
           </button>
           <button type="button" onClick={() => { closeFileMenu(); onOpenExternalSamples(); }}>
             <CloudDownload size={15} aria-hidden="true" />
