@@ -61,6 +61,7 @@ const themeColorLabels: Record<ThemeColorKey, string> = {
   danger: 'Danger',
   editorBackground: 'Editor background',
   editorText: 'Editor text',
+  playbackHighlight: 'Playback highlight',
 };
 
 const themeFontLabels: Record<ThemeFontKey, string> = {

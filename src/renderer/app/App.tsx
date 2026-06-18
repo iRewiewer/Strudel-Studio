@@ -5,6 +5,7 @@ import type {
   ProjectSessionSnapshot,
   ProjectSnapshot,
   RecentProject,
+  StudioError,
   StudioPluginSummary,
   StudioTheme,
   WorkspaceEditorPanelNode,
@@ -48,6 +49,12 @@ import {
   type ExternalSamplePack,
   type ExternalSamplePackState,
 } from '../services/strudel/externalSamplePacks';
+import {
+  collectPlaybackHighlightGroups,
+  getActivePlaybackHighlightRanges,
+  type PlaybackHighlightGroup,
+  type PlaybackHighlightRange,
+} from '../services/strudel/playbackHighlights';
 import {
   updateStrudelSliderArgument,
   type StrudelSliderArgumentName,
@@ -461,6 +468,10 @@ export const App = (): JSX.Element => {
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [openFilesByPath, setOpenFilesByPath] = useState<Record<string, EditorFile>>({});
   const [sliderValuesById, setSliderValuesById] = useState<Record<string, number>>({});
+  const [fileErrorsByPath, setFileErrorsByPath] = useState<Record<string, StudioError>>({});
+  const [playbackHighlightRangesByPath, setPlaybackHighlightRangesByPath] = useState<
+    Record<string, PlaybackHighlightRange[]>
+  >({});
   const [editorLayout, setEditorLayout] = useState<EditorPanelNode>(createPanelLeaf(defaultPanelId, null));
   const [activePanelId, setActivePanelId] = useState(defaultPanelId);
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(300);
@@ -658,6 +669,8 @@ export const App = (): JSX.Element => {
       setProject(session.project);
       setOpenFilesByPath(filesByPath);
       setSliderValuesById({});
+      setFileErrorsByPath({});
+      setPlaybackHighlightRangesByPath({});
       setEditorLayout(nextEditorLayout);
       setActivePanelId(nextActivePanelId);
       setSavedWorkspaceSignature(
@@ -892,6 +905,15 @@ export const App = (): JSX.Element => {
         },
       };
     });
+    setFileErrorsByPath((previous) => {
+      if (!previous[relativePath]) {
+        return previous;
+      }
+
+      const next = { ...previous };
+      delete next[relativePath];
+      return next;
+    });
   }, []);
 
   const saveFiles = useCallback(
@@ -1014,6 +1036,34 @@ export const App = (): JSX.Element => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSaveActive, handleSaveAll]);
 
+  const clearPlaybackErrorsForFiles = useCallback((files: EditorFile[]): void => {
+    setFileErrorsByPath((previous) => {
+      let changed = false;
+      const next = { ...previous };
+
+      for (const file of files) {
+        if (next[file.relativePath]) {
+          delete next[file.relativePath];
+          changed = true;
+        }
+      }
+
+      return changed ? next : previous;
+    });
+  }, []);
+
+  const recordPlaybackError = useCallback((error: StudioError, fallbackFiles: EditorFile[]): void => {
+    const relativePath = error.filePath ?? fallbackFiles[0]?.relativePath;
+    if (!relativePath) {
+      return;
+    }
+
+    setFileErrorsByPath((previous) => ({
+      ...previous,
+      [relativePath]: { ...error, filePath: relativePath },
+    }));
+  }, []);
+
   const setPlayingState = useCallback((mode: 'single' | 'all', files: EditorFile[]): void => {
     setPlayback({
       status: 'playing',
@@ -1033,8 +1083,10 @@ export const App = (): JSX.Element => {
     const result = await playbackService.current.playFiles([activeFile], true);
     if (result.ok) {
       lastEvaluatedPlaybackSignature.current = getPlaybackEvaluationSignature([activeFile], sliderValuesById);
+      clearPlaybackErrorsForFiles([activeFile]);
       setPlayingState('single', [activeFile]);
     } else {
+      recordPlaybackError(result.error, [activeFile]);
       setPlayback({
         status: 'error',
         mode: 'single',
@@ -1043,7 +1095,7 @@ export const App = (): JSX.Element => {
         error: result.error,
       });
     }
-  }, [activeFile, setPlayingState, sliderValuesById]);
+  }, [activeFile, clearPlaybackErrorsForFiles, recordPlaybackError, setPlayingState, sliderValuesById]);
 
   const handlePlayAll = useCallback(async (): Promise<void> => {
     if (includedFiles.length === 0) {
@@ -1055,9 +1107,11 @@ export const App = (): JSX.Element => {
     const result = await playbackService.current.playFiles(includedFiles, true);
     if (result.ok) {
       lastEvaluatedPlaybackSignature.current = getPlaybackEvaluationSignature(includedFiles, sliderValuesById);
+      clearPlaybackErrorsForFiles(includedFiles);
       setPlayingState('all', includedFiles);
       setOperationError(null);
     } else {
+      recordPlaybackError(result.error, includedFiles);
       setPlayback({
         status: 'error',
         mode: 'all',
@@ -1066,7 +1120,7 @@ export const App = (): JSX.Element => {
         error: result.error,
       });
     }
-  }, [includedFiles, setPlayingState, sliderValuesById]);
+  }, [clearPlaybackErrorsForFiles, includedFiles, recordPlaybackError, setPlayingState, sliderValuesById]);
 
   const handleStop = useCallback(async (): Promise<void> => {
     await playbackService.current.panic();
@@ -1434,6 +1488,49 @@ export const App = (): JSX.Element => {
     return getPlaybackEvaluationSignature(livePlaybackFiles, sliderValuesById);
   }, [livePlaybackFiles, sliderValuesById]);
 
+  const playbackHighlightGroupsByPath = useMemo<Record<string, PlaybackHighlightGroup[]>>(() => {
+    if (playback.status !== 'playing') {
+      return {};
+    }
+
+    return Object.fromEntries(
+      livePlaybackFiles.map((file) => {
+        try {
+          return [file.relativePath, collectPlaybackHighlightGroups(file.content)] as const;
+        } catch {
+          return [file.relativePath, []] as const;
+        }
+      }),
+    );
+  }, [livePlaybackFiles, playback.status]);
+
+  useEffect(() => {
+    if (playback.status !== 'playing') {
+      setPlaybackHighlightRangesByPath({});
+      return undefined;
+    }
+
+    const updateHighlights = (): void => {
+      const playbackTime = playbackService.current.getPlaybackTime();
+      if (playbackTime === null) {
+        return;
+      }
+
+      setPlaybackHighlightRangesByPath(
+        Object.fromEntries(
+          Object.entries(playbackHighlightGroupsByPath).map(([relativePath, groups]) => [
+            relativePath,
+            getActivePlaybackHighlightRanges(groups, playbackTime),
+          ]),
+        ),
+      );
+    };
+
+    updateHighlights();
+    const intervalId = window.setInterval(updateHighlights, 90);
+    return () => window.clearInterval(intervalId);
+  }, [playback.status, playbackHighlightGroupsByPath]);
+
   useEffect(() => {
     if (playback.status !== 'playing') {
       return undefined;
@@ -1455,9 +1552,11 @@ export const App = (): JSX.Element => {
       void playbackService.current.playFiles(livePlaybackFiles, false).then((result) => {
         if (result.ok) {
           lastEvaluatedPlaybackSignature.current = livePlaybackSignature;
+          clearPlaybackErrorsForFiles(livePlaybackFiles);
           setPlayingState(playback.mode ?? 'all', livePlaybackFiles);
           return;
         }
+        recordPlaybackError(result.error, livePlaybackFiles);
         setPlayback({
           status: 'error',
           mode: playback.mode,
@@ -1469,7 +1568,15 @@ export const App = (): JSX.Element => {
     }, 75);
 
     return () => window.clearTimeout(timeout);
-  }, [livePlaybackFiles, livePlaybackSignature, playback.mode, playback.status, setPlayingState]);
+  }, [
+    clearPlaybackErrorsForFiles,
+    livePlaybackFiles,
+    livePlaybackSignature,
+    playback.mode,
+    playback.status,
+    recordPlaybackError,
+    setPlayingState,
+  ]);
 
   const handleSplit = useCallback(
     (direction: EditorSplitDirection): void => {
@@ -1608,6 +1715,7 @@ export const App = (): JSX.Element => {
           projectRoot={project.rootPath}
           files={project.files}
           openFilesByPath={openFilesByPath}
+          fileErrorsByPath={fileErrorsByPath}
           activeFilePath={activeFilePath}
           newFileName={newFileName}
           onNewFileNameChange={setNewFileName}
@@ -1633,6 +1741,8 @@ export const App = (): JSX.Element => {
           onActivateFile={setPanelFile}
           onCloseFile={handleCloseFile}
           onChangeContent={handleChangeContent}
+          playbackHighlightRangesByPath={playbackHighlightRangesByPath}
+          fileErrorsByPath={fileErrorsByPath}
         />
         <div
           className={`resize-handle resize-handle-right ${rightSidebarCollapsed ? 'is-hidden' : ''}`}

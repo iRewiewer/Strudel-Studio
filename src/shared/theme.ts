@@ -14,6 +14,7 @@ export const themeColorKeys: ThemeColorKey[] = [
   'danger',
   'editorBackground',
   'editorText',
+  'playbackHighlight',
 ];
 
 export const themeFontKeys: ThemeFontKey[] = ['interface', 'editor'];
@@ -31,7 +32,8 @@ const defaultThemeFontSizes: StudioTheme['fontSizes'] = {
   editor: 15,
 };
 
-type BuiltInThemeColors = Omit<StudioTheme['colors'], 'recentPanel'> & Partial<Pick<StudioTheme['colors'], 'recentPanel'>>;
+type BuiltInThemeColors = Omit<StudioTheme['colors'], 'recentPanel' | 'playbackHighlight'> &
+  Partial<Pick<StudioTheme['colors'], 'recentPanel' | 'playbackHighlight'>>;
 
 const createBuiltInTheme = (name: string, colors: BuiltInThemeColors): StudioTheme => ({
   version: 1,
@@ -40,6 +42,7 @@ const createBuiltInTheme = (name: string, colors: BuiltInThemeColors): StudioThe
   themeVersion: builtInThemeVersion,
   colors: {
     recentPanel: colors.panel,
+    playbackHighlight: colors.primary,
     ...colors,
   },
   fonts: defaultThemeFonts,
@@ -60,6 +63,7 @@ export const defaultStudioTheme: StudioTheme = createBuiltInTheme('Strudel Studi
   danger: '#f26d6d',
   editorBackground: '#0f1211',
   editorText: '#f2f6ef',
+  playbackHighlight: '#ffffff',
 });
 
 export const builtInStudioThemes: StudioTheme[] = [

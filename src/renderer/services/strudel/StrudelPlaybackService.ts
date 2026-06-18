@@ -9,6 +9,7 @@ import {
   resetGlobalEffects,
   samples,
 } from '@strudel/web';
+import { getCps, getTime } from '@strudel/core';
 import type { StudioError } from '../../../shared/types';
 import {
   combineStrudelFiles,
@@ -178,6 +179,24 @@ export class StrudelPlaybackService {
 
   unloadPlugin(pluginId: string): void {
     this.loadedPluginScripts.delete(pluginId);
+  }
+
+  getPlaybackTime(): number | null {
+    if (!this.initPromise) {
+      return null;
+    }
+
+    try {
+      const time = Number(getTime());
+      const cps = Number(getCps());
+      if (!Number.isFinite(time)) {
+        return null;
+      }
+
+      return Number.isFinite(cps) && cps > 0 ? time * cps : time;
+    } catch {
+      return null;
+    }
   }
 
   private async ensureInitialized(): Promise<void> {

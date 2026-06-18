@@ -1,5 +1,5 @@
-import { Check, FileCode2, FilePlus2, FolderOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import type { ProjectFile } from '../../../shared/types';
+import { AlertTriangle, Check, FileCode2, FilePlus2, FolderOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import type { ProjectFile, StudioError } from '../../../shared/types';
 import type { EditorFile } from '../../types/workbench';
 
 type FileExplorerProps = {
@@ -7,6 +7,7 @@ type FileExplorerProps = {
   projectRoot: string;
   files: ProjectFile[];
   openFilesByPath: Record<string, EditorFile>;
+  fileErrorsByPath: Record<string, StudioError>;
   activeFilePath: string | null;
   newFileName: string;
   onNewFileNameChange: (value: string) => void;
@@ -28,6 +29,7 @@ export const FileExplorer = ({
   projectRoot,
   files,
   openFilesByPath,
+  fileErrorsByPath,
   activeFilePath,
   newFileName,
   onNewFileNameChange,
@@ -39,6 +41,13 @@ export const FileExplorer = ({
   collapsed,
   onToggleCollapsed,
 }: FileExplorerProps): JSX.Element => {
+  const getFileErrorTitle = (error: StudioError): string => {
+    const location = error.line
+      ? ` Line ${error.line}${error.column ? `, column ${error.column}` : ''}.`
+      : '';
+    return `Syntax error: ${error.message}.${location}`;
+  };
+
   if (collapsed) {
     return (
       <aside className="sidebar sidebar-left is-collapsed" aria-label="Project files">
@@ -105,6 +114,7 @@ export const FileExplorer = ({
           const included = openFile?.includedInPlayAll ?? false;
           const dirty = openFile?.dirty ?? false;
           const playbackVolume = openFile?.playbackVolume ?? 1;
+          const fileError = fileErrorsByPath[file.relativePath];
           return (
             <div
               className={`file-row ${activeFilePath === file.relativePath ? 'is-active' : ''}`}
@@ -122,7 +132,14 @@ export const FileExplorer = ({
               <button type="button" className="file-open-button" onClick={() => onOpenFile(file.relativePath)}>
                 <FileCode2 size={16} aria-hidden="true" />
                 <span>{formatFileLabel(file.relativePath)}</span>
-                {dirty ? <strong className="dirty-dot" aria-label="Unsaved changes" /> : null}
+                <span className="file-row-indicators">
+                  {fileError ? (
+                    <span className="syntax-error-dot" title={getFileErrorTitle(fileError)} aria-label="Syntax error">
+                      <AlertTriangle size={13} aria-hidden="true" />
+                    </span>
+                  ) : null}
+                  {dirty ? <strong className="dirty-dot" aria-label="Unsaved changes" /> : null}
+                </span>
               </button>
               <label className="volume-slider" title={`Volume ${Math.round(playbackVolume * 100)}%`}>
                 <span>Vol</span>

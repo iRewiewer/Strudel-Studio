@@ -24,3 +24,13 @@ declare module '@strudel/web' {
 
   export function samples(source: string): unknown | Promise<unknown>;
 }
+
+declare module '@strudel/transpiler' {
+  export function transpiler(input: string, options?: Record<string, unknown>): unknown;
+}
+
+declare module '@strudel/core' {
+  export function getCps(): number | undefined;
+
+  export function getTime(): number;
+}

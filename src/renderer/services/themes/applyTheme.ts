@@ -14,6 +14,7 @@ const cssVariableByColor = {
   danger: '--studio-danger',
   editorBackground: '--studio-editor-background',
   editorText: '--studio-editor-text',
+  playbackHighlight: '--studio-playback-highlight',
 } as const;
 
 export const applyStudioTheme = (theme: StudioTheme): void => {

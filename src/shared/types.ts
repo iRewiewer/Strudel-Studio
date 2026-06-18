@@ -72,7 +72,8 @@ export type ThemeColorKey =
   | 'warning'
   | 'danger'
   | 'editorBackground'
-  | 'editorText';
+  | 'editorText'
+  | 'playbackHighlight';
 
 export type ThemeFontKey = 'interface' | 'editor';
 
