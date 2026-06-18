@@ -1,9 +1,9 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   Columns2,
   FilePlus2,
   FolderOpen,
   Home,
-  MoreVertical,
   Palette,
   PanelTopClose,
   Play,
@@ -14,11 +14,10 @@ import {
   SaveAll,
   Square,
 } from 'lucide-react';
-import type { PlaybackState, StudioSettings } from '../../types/workbench';
+import type { PlaybackState } from '../../types/workbench';
 
 type PlaybackControlsProps = {
   playback: PlaybackState;
-  settings: StudioSettings;
   activeFileName: string | null;
   includedCount: number;
   dirtyCount: number;
@@ -36,7 +35,6 @@ type PlaybackControlsProps = {
   onSplitVertical: () => void;
   onSplitHorizontal: () => void;
   onClosePanel: () => void;
-  onToggleKeepSelectionOnClose: (enabled: boolean) => void;
   canPlayActive: boolean;
   canPlayAll: boolean;
   canSaveActive: boolean;
@@ -45,7 +43,6 @@ type PlaybackControlsProps = {
 
 export const PlaybackControls = ({
   playback,
-  settings,
   activeFileName,
   includedCount,
   dirtyCount,
@@ -63,32 +60,68 @@ export const PlaybackControls = ({
   onSplitVertical,
   onSplitHorizontal,
   onClosePanel,
-  onToggleKeepSelectionOnClose,
   canPlayActive,
   canPlayAll,
   canSaveActive,
   canSaveAll,
 }: PlaybackControlsProps): JSX.Element => {
   const isBusy = playback.status === 'starting';
+  const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const fileMenuRef = useRef<HTMLDetailsElement>(null);
+
+  useEffect(() => {
+    if (!fileMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (target instanceof Node && !fileMenuRef.current?.contains(target)) {
+        setFileMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setFileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [fileMenuOpen]);
+
+  const closeFileMenu = (): void => setFileMenuOpen(false);
 
   return (
     <header className="topbar">
-      <details className="menu-dropdown">
-        <summary>File</summary>
+      <details className="menu-dropdown" open={fileMenuOpen} ref={fileMenuRef}>
+        <summary
+          onClick={(event) => {
+            event.preventDefault();
+            setFileMenuOpen((previous) => !previous);
+          }}
+        >
+          File
+        </summary>
         <div className="menu-panel">
-          <button type="button" onClick={onGoHome}>
+          <button type="button" onClick={() => { closeFileMenu(); onGoHome(); }}>
             <Home size={15} aria-hidden="true" />
             Back to Main Menu
           </button>
-          <button type="button" onClick={onNewProject}>
+          <button type="button" onClick={() => { closeFileMenu(); onNewProject(); }}>
             <FilePlus2 size={15} aria-hidden="true" />
             New Project
           </button>
-          <button type="button" onClick={onOpenProject}>
+          <button type="button" onClick={() => { closeFileMenu(); onOpenProject(); }}>
             <FolderOpen size={15} aria-hidden="true" />
             Open Project
           </button>
-          <button type="button" onClick={onOpenThemeSelector}>
+          <button type="button" onClick={() => { closeFileMenu(); onOpenThemeSelector(); }}>
             <Palette size={15} aria-hidden="true" />
             Theme Selector
           </button>
@@ -149,21 +182,6 @@ export const PlaybackControls = ({
           Save All
           {dirtyCount > 0 ? <span className="count-badge">{dirtyCount}</span> : null}
         </button>
-        <details className="icon-menu-dropdown">
-          <summary title="More actions">
-            <MoreVertical size={17} aria-hidden="true" />
-          </summary>
-          <div className="menu-panel align-right">
-            <label className="menu-check">
-              <input
-                type="checkbox"
-                checked={settings.keepPlayAllSelectionOnClose}
-                onChange={(event) => onToggleKeepSelectionOnClose(event.target.checked)}
-              />
-              Keep Play All selection on close
-            </label>
-          </div>
-        </details>
       </div>
     </header>
   );

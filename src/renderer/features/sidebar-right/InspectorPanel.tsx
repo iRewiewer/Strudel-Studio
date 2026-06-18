@@ -20,6 +20,8 @@ type InspectorPanelProps = {
     argumentName: StrudelSliderArgumentName,
     value: number,
   ) => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 };
 
 type InfoPanelProps = {
@@ -375,6 +377,8 @@ export const InspectorPanel = ({
   activeFile,
   sliderValues,
   onSliderArgumentChange,
+  collapsed,
+  onToggleCollapsed,
 }: InspectorPanelProps): JSX.Element => {
   const tabs: SidebarTabDefinition[] = [
     {
@@ -410,8 +414,13 @@ export const InspectorPanel = ({
   ];
 
   return (
-    <aside className="sidebar sidebar-right" aria-label="Inspector">
-      <SidebarTabs tabs={tabs} ariaLabel="Inspector tabs" />
+    <aside className={`sidebar sidebar-right ${collapsed ? 'is-collapsed' : ''}`} aria-label="Inspector">
+      <SidebarTabs
+        tabs={tabs}
+        ariaLabel="Inspector tabs"
+        collapsed={collapsed}
+        onToggleCollapsed={onToggleCollapsed}
+      />
     </aside>
   );
 };

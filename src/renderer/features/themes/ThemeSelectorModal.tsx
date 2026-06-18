@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, FolderOpen, Plus, Save, Search, Trash2, X } from 'lucide-react';
+import { Copy, FolderOpen, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
 import type {
   StudioTheme,
   StudioThemeSummary,
@@ -146,7 +146,12 @@ export const ThemeSelectorModal = ({
   const refreshThemes = useCallback(
     async (nextSelectedThemeId?: string, fallbackThemeName?: string): Promise<void> => {
       const result = await listStudioThemes();
-      const nextThemes = [defaultThemeSummary, ...result.themes];
+      const unsavedTheme = themes.find((theme) => theme.id === unsavedThemeId) ?? null;
+      const nextThemes = [
+        defaultThemeSummary,
+        ...(unsavedTheme ? [unsavedTheme] : []),
+        ...result.themes,
+      ];
       setThemes(nextThemes);
       setThemesDirectory(result.themesDirectory);
 
@@ -159,7 +164,7 @@ export const ThemeSelectorModal = ({
         selectTheme(selected);
       }
     },
-    [selectTheme, selectedThemeId],
+    [selectTheme, selectedThemeId, themes],
   );
 
   useEffect(() => {
@@ -309,6 +314,16 @@ export const ThemeSelectorModal = ({
       setError(revealError instanceof Error ? revealError.message : String(revealError));
     }
   }, []);
+
+  const handleRefreshThemes = useCallback(async (): Promise<void> => {
+    try {
+      await refreshThemes(selectedThemeId, draftTheme.name);
+      setStatus('Theme list refreshed');
+      setError(null);
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
+    }
+  }, [draftTheme.name, refreshThemes, selectedThemeId]);
 
   const handleSavedTheme = useCallback(
     (theme: StudioThemeSummary): void => {
@@ -469,6 +484,14 @@ export const ThemeSelectorModal = ({
               >
                 <FolderOpen size={17} aria-hidden="true" />
               </button>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => void handleRefreshThemes()}
+                title="Refresh themes"
+              >
+                <RefreshCw size={17} aria-hidden="true" />
+              </button>
             </div>
 
             <div className="theme-list" role="list">
@@ -500,6 +523,9 @@ export const ThemeSelectorModal = ({
                 }
               />
             </label>
+            <p className="theme-file-path" title={selectedThemePath ?? undefined}>
+              {selectedThemePath ?? (selectedThemeIsBuiltIn ? 'Built-in theme' : 'Not saved to disk')}
+            </p>
 
             <div className="theme-meta-grid">
               <label className="theme-name-field">

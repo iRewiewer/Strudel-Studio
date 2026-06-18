@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
-import { PanelBottom, PanelLeft, PanelRight, PanelTop } from 'lucide-react';
+import { MoveHorizontal, PanelRightClose, PanelRightOpen } from 'lucide-react';
 
 export type SidebarTabDefinition = {
   id: string;
@@ -12,19 +12,14 @@ export type SidebarTabDefinition = {
 type SidebarTabsProps = {
   tabs: SidebarTabDefinition[];
   ariaLabel: string;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 };
 
 type SidebarTabPlacement = 'left' | 'top' | 'right' | 'bottom';
 
 const placementStorageKey = 'strudel-studio:inspector-tab-placement';
 const tabPlacements: SidebarTabPlacement[] = ['left', 'top', 'right', 'bottom'];
-
-const placementIcons: Record<SidebarTabPlacement, ReactNode> = {
-  left: <PanelLeft size={15} aria-hidden="true" />,
-  top: <PanelTop size={15} aria-hidden="true" />,
-  right: <PanelRight size={15} aria-hidden="true" />,
-  bottom: <PanelBottom size={15} aria-hidden="true" />,
-};
 
 const getNextPlacement = (placement: SidebarTabPlacement): SidebarTabPlacement => {
   const currentIndex = tabPlacements.indexOf(placement);
@@ -42,7 +37,12 @@ const loadStoredPlacement = (): SidebarTabPlacement => {
   }
 };
 
-export const SidebarTabs = ({ tabs, ariaLabel }: SidebarTabsProps): JSX.Element => {
+export const SidebarTabs = ({
+  tabs,
+  ariaLabel,
+  collapsed = false,
+  onToggleCollapsed,
+}: SidebarTabsProps): JSX.Element => {
   const [activeTabId, setActiveTabId] = useState(tabs[0]?.id ?? '');
   const [placement, setPlacement] = useState<SidebarTabPlacement>(() => loadStoredPlacement());
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null;
@@ -62,6 +62,22 @@ export const SidebarTabs = ({ tabs, ariaLabel }: SidebarTabsProps): JSX.Element 
       // Placement is purely cosmetic, so failing to persist it is harmless.
     }
   }, [placement]);
+
+  if (collapsed) {
+    return (
+      <div className="sidebar-tab-shell is-collapsed">
+        <button
+          type="button"
+          className="sidebar-tab-collapse-button"
+          onClick={onToggleCollapsed}
+          aria-label="Expand inspector sidebar"
+          title="Expand inspector sidebar"
+        >
+          <PanelRightOpen size={17} aria-hidden="true" />
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="sidebar-tab-shell" data-placement={placement}>
@@ -105,7 +121,17 @@ export const SidebarTabs = ({ tabs, ariaLabel }: SidebarTabsProps): JSX.Element 
           aria-label={`Move inspector tabs to ${nextPlacement}`}
           title={`Move tabs to ${nextPlacement}`}
         >
-          {placementIcons[nextPlacement]}
+          <MoveHorizontal size={15} aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          className="sidebar-tab-collapse-button"
+          onClick={onToggleCollapsed}
+          aria-label="Collapse inspector sidebar"
+          title="Collapse inspector sidebar"
+        >
+          <PanelRightClose size={15} aria-hidden="true" />
         </button>
       </div>
     </div>

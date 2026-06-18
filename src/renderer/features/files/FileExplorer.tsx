@@ -1,4 +1,4 @@
-import { Check, FileCode2, FilePlus2, FolderOpen } from 'lucide-react';
+import { Check, FileCode2, FilePlus2, FolderOpen, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import type { ProjectFile } from '../../../shared/types';
 import type { EditorFile } from '../../types/workbench';
 
@@ -15,6 +15,8 @@ type FileExplorerProps = {
   onToggleIncluded: (relativePath: string, included: boolean) => void;
   onPlaybackVolumeChange: (relativePath: string, volume: number) => void;
   onOpenProject: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 };
 
 const formatFileLabel = (relativePath: string): string => {
@@ -34,7 +36,25 @@ export const FileExplorer = ({
   onToggleIncluded,
   onPlaybackVolumeChange,
   onOpenProject,
+  collapsed,
+  onToggleCollapsed,
 }: FileExplorerProps): JSX.Element => {
+  if (collapsed) {
+    return (
+      <aside className="sidebar sidebar-left is-collapsed" aria-label="Project files">
+        <button
+          type="button"
+          className="sidebar-collapse-button"
+          onClick={onToggleCollapsed}
+          title="Expand project sidebar"
+          aria-label="Expand project sidebar"
+        >
+          <PanelLeftOpen size={17} aria-hidden="true" />
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="sidebar sidebar-left" aria-label="Project files">
       <div className="sidebar-heading">
@@ -42,9 +62,20 @@ export const FileExplorer = ({
           <p className="eyebrow">Project</p>
           <h2>{projectName}</h2>
         </div>
-        <button type="button" className="icon-button" onClick={onOpenProject} title="Open project">
-          <FolderOpen size={18} aria-hidden="true" />
-        </button>
+        <div className="sidebar-heading-actions">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onToggleCollapsed}
+            title="Collapse project sidebar"
+            aria-label="Collapse project sidebar"
+          >
+            <PanelLeftClose size={18} aria-hidden="true" />
+          </button>
+          <button type="button" className="icon-button" onClick={onOpenProject} title="Open project">
+            <FolderOpen size={18} aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <p className="path-label" title={projectRoot}>

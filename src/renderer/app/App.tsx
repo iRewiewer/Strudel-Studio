@@ -39,7 +39,6 @@ import type {
   EditorPanelNode,
   EditorSplitDirection,
   PlaybackState,
-  StudioSettings,
   WorkbenchProject,
 } from '../types/workbench';
 import { stoppedPlaybackState } from '../types/workbench';
@@ -48,11 +47,10 @@ const defaultPanelId = 'panel-1';
 const leftSidebarMinWidth = 220;
 const rightSidebarMinWidth = 280;
 const sidebarMaxWidth = 520;
+const collapsedSidebarWidth = 44;
 const themeStorageKey = 'strudel-studio:active-theme';
 
-const defaultSettings: StudioSettings = {
-  keepPlayAllSelectionOnClose: false,
-};
+const keepPlayAllSelectionOnClose = false;
 
 const normalizeThemeText = (value: unknown, fallback: string): string => {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback;
@@ -446,7 +444,8 @@ export const App = (): JSX.Element => {
   const [activePanelId, setActivePanelId] = useState(defaultPanelId);
   const [leftSidebarWidth, setLeftSidebarWidth] = useState(300);
   const [rightSidebarWidth, setRightSidebarWidth] = useState(280);
-  const [settings, setSettings] = useState<StudioSettings>(defaultSettings);
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [busy, setBusy] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
@@ -811,7 +810,7 @@ export const App = (): JSX.Element => {
           return previous;
         }
 
-        if (settings.keepPlayAllSelectionOnClose) {
+        if (keepPlayAllSelectionOnClose) {
           return {
             ...previous,
             [relativePath]: {
@@ -826,7 +825,7 @@ export const App = (): JSX.Element => {
         return next;
       });
     },
-    [editorLayout, settings.keepPlayAllSelectionOnClose],
+    [editorLayout],
   );
 
   const handleChangeContent = useCallback((relativePath: string, content: string): void => {
@@ -1082,7 +1081,7 @@ export const App = (): JSX.Element => {
           error: result.error,
         });
       });
-    }, 500);
+    }, 75);
 
     return () => window.clearTimeout(timeout);
   }, [livePlaybackFiles, livePlaybackSignature, playback.mode, playback.status, setPlayingState]);
@@ -1124,7 +1123,7 @@ export const App = (): JSX.Element => {
           }
 
           changed = true;
-          if (settings.keepPlayAllSelectionOnClose) {
+          if (keepPlayAllSelectionOnClose) {
             next[relativePath] = { ...existing, isOpen: false };
           } else {
             delete next[relativePath];
@@ -1134,7 +1133,7 @@ export const App = (): JSX.Element => {
         return changed ? next : previous;
       });
     }
-  }, [activePanelId, editorLayout, panelCount, settings.keepPlayAllSelectionOnClose]);
+  }, [activePanelId, editorLayout, panelCount]);
 
   const beginSidebarResize = useCallback(
     (side: 'left' | 'right', event: React.PointerEvent<HTMLDivElement>): void => {
@@ -1183,7 +1182,6 @@ export const App = (): JSX.Element => {
     <div className="app-shell">
       <PlaybackControls
         playback={playback}
-        settings={settings}
         activeFileName={activeFile?.name ?? null}
         includedCount={includedFiles.length}
         dirtyCount={dirtyFiles.length}
@@ -1201,9 +1199,6 @@ export const App = (): JSX.Element => {
         onSplitVertical={() => handleSplit('vertical')}
         onSplitHorizontal={() => handleSplit('horizontal')}
         onClosePanel={handleClosePanel}
-        onToggleKeepSelectionOnClose={(enabled) =>
-          setSettings((previous) => ({ ...previous, keepPlayAllSelectionOnClose: enabled }))
-        }
         canPlayActive={Boolean(activeFile)}
         canPlayAll={includedFiles.length > 0}
         canSaveActive={Boolean(activeFile?.dirty)}
@@ -1213,7 +1208,13 @@ export const App = (): JSX.Element => {
       <div
         className="workspace-grid"
         style={{
-          gridTemplateColumns: `${leftSidebarWidth}px 6px minmax(0, 1fr) 6px ${rightSidebarWidth}px`,
+          gridTemplateColumns: [
+            `${leftSidebarCollapsed ? collapsedSidebarWidth : leftSidebarWidth}px`,
+            `${leftSidebarCollapsed ? 0 : 6}px`,
+            'minmax(0, 1fr)',
+            `${rightSidebarCollapsed ? 0 : 6}px`,
+            `${rightSidebarCollapsed ? collapsedSidebarWidth : rightSidebarWidth}px`,
+          ].join(' '),
         }}
       >
         <FileExplorer
@@ -1229,9 +1230,11 @@ export const App = (): JSX.Element => {
           onToggleIncluded={handleToggleIncluded}
           onPlaybackVolumeChange={handlePlaybackVolumeChange}
           onOpenProject={handleOpenProject}
+          collapsed={leftSidebarCollapsed}
+          onToggleCollapsed={() => setLeftSidebarCollapsed((previous) => !previous)}
         />
         <div
-          className="resize-handle resize-handle-left"
+          className={`resize-handle resize-handle-left ${leftSidebarCollapsed ? 'is-hidden' : ''}`}
           role="separator"
           aria-label="Resize left sidebar"
           onPointerDown={(event) => beginSidebarResize('left', event)}
@@ -1246,7 +1249,7 @@ export const App = (): JSX.Element => {
           onChangeContent={handleChangeContent}
         />
         <div
-          className="resize-handle resize-handle-right"
+          className={`resize-handle resize-handle-right ${rightSidebarCollapsed ? 'is-hidden' : ''}`}
           role="separator"
           aria-label="Resize right sidebar"
           onPointerDown={(event) => beginSidebarResize('right', event)}
@@ -1257,6 +1260,8 @@ export const App = (): JSX.Element => {
           activeFile={activeFile}
           sliderValues={sliderValuesById}
           onSliderArgumentChange={handleSliderArgumentChange}
+          collapsed={rightSidebarCollapsed}
+          onToggleCollapsed={() => setRightSidebarCollapsed((previous) => !previous)}
         />
       </div>
 
