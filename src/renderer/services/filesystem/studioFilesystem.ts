@@ -1,7 +1,10 @@
 import type {
   CreateFileRequest,
+  AddPluginSourceRequest,
+  DeletePluginRequest,
   DeleteThemeRequest,
   OpenFileState,
+  PluginScriptBundle,
   ProjectSessionSnapshot,
   ProjectSnapshot,
   RecentProject,
@@ -9,6 +12,7 @@ import type {
   SaveThemeRequest,
   SaveThemeResult,
   SaveWorkspaceRequest,
+  StudioPluginSummary,
   StudioThemeSummary,
   WorkspaceSnapshot,
 } from '../../../shared/types';
@@ -77,6 +81,41 @@ export const revealStudioThemesDirectory = async (): Promise<void> => {
 
 export const listSystemFonts = async (): Promise<string[]> => {
   return window.studio.listSystemFonts();
+};
+
+export const listStudioPlugins = async (): Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string }> => {
+  return window.studio.listPlugins();
+};
+
+export const addStudioPluginSource = async (
+  request: AddPluginSourceRequest,
+): Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string }> => {
+  return window.studio.addPluginSource(request);
+};
+
+export const importStudioPluginFolder = async (): Promise<{
+  plugins: StudioPluginSummary[];
+  pluginsDirectory: string;
+} | null> => {
+  return window.studio.importPluginFolder();
+};
+
+export const deleteStudioPlugin = async (
+  request: DeletePluginRequest,
+): Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string }> => {
+  return window.studio.deletePlugin(request);
+};
+
+export const readStudioPluginScriptBundle = async (pluginPath: string): Promise<PluginScriptBundle> => {
+  return window.studio.readPluginScriptBundle(pluginPath);
+};
+
+export const revealStudioPluginsDirectory = async (): Promise<void> => {
+  await window.studio.revealPluginsDirectory();
+};
+
+export const revealExternalSamplesDirectory = async (): Promise<void> => {
+  await window.studio.revealExternalSamplesDirectory();
 };
 
 export const toOpenFileState = (file: OpenFileState): OpenFileState => ({

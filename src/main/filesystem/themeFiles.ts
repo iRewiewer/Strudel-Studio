@@ -1,7 +1,7 @@
 import { app } from 'electron';
-import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { basename, extname, join, parse, resolve, sep } from 'node:path';
+import { basename, dirname, extname, join, parse, resolve, sep } from 'node:path';
 import type {
   SaveThemeRequest,
   SaveThemeResult,
@@ -14,6 +14,7 @@ import type {
 import { defaultStudioTheme, themeColorKeys, themeFontKeys, themeFontSizeKeys } from '../../shared/theme';
 
 const fontExtensions = new Set(['.otf', '.ttc', '.ttf', '.woff', '.woff2']);
+const themeFileName = 'theme.json';
 
 const getThemesDirectory = (): string => {
   return join(app.getPath('userData'), 'themes');
@@ -110,10 +111,10 @@ const getUniqueThemePath = async (themeName: string): Promise<string> => {
 
   for (let index = 0; index < 1000; index += 1) {
     const suffix = index === 0 ? '' : `-${index + 1}`;
-    const candidate = join(directory, `${slug}${suffix}.json`);
-    const exists = await stat(candidate).then(() => true).catch(() => false);
+    const candidateDirectory = join(directory, `${slug}${suffix}`);
+    const exists = await stat(candidateDirectory).then(() => true).catch(() => false);
     if (!exists) {
-      return candidate;
+      return join(candidateDirectory, themeFileName);
     }
   }
 
@@ -148,11 +149,17 @@ export const listThemeFiles = async (): Promise<{ themes: StudioThemeSummary[]; 
   const themes: StudioThemeSummary[] = [];
 
   for (const entry of entries) {
-    if (!entry.isFile() || extname(entry.name).toLowerCase() !== '.json') {
+    const entryPath = join(themesDirectory, entry.name);
+    const themePath = entry.isDirectory()
+      ? join(entryPath, themeFileName)
+      : entry.isFile() && extname(entry.name).toLowerCase() === '.json'
+        ? entryPath
+        : null;
+
+    if (!themePath) {
       continue;
     }
 
-    const themePath = join(themesDirectory, entry.name);
     const theme = await readThemeFile(themePath).catch(() => null);
     if (theme) {
       themes.push(toThemeSummary(themePath, theme));
@@ -174,6 +181,7 @@ export const saveThemeFile = async (request: SaveThemeRequest): Promise<SaveThem
     ? await getUniqueThemePath(theme.name)
     : assertInsideThemesDirectory(request.targetPath);
 
+  await mkdir(dirname(themePath), { recursive: true });
   await writeFile(themePath, `${JSON.stringify(theme, null, 2)}\n`, 'utf8');
 
   return {
@@ -195,7 +203,12 @@ export const deleteThemeFile = async (
     throw new Error('Only theme JSON files can be deleted.');
   }
 
-  await unlink(target);
+  if (basename(target).toLowerCase() === themeFileName && resolve(dirname(target)) !== resolve(getThemesDirectory())) {
+    await rm(dirname(target), { recursive: true, force: false });
+  } else {
+    await unlink(target);
+  }
+
   return listThemeFiles();
 };
 

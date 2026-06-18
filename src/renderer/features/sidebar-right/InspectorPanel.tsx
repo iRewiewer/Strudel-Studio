@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, AudioWaveform, BookOpen, FolderTree, Info, Music, Search, SlidersHorizontal } from 'lucide-react';
+import {
+  AlertTriangle,
+  AudioWaveform,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  FolderTree,
+  Info,
+  Music,
+  Search,
+  SlidersHorizontal,
+  Volume2,
+} from 'lucide-react';
 import type { SampleServerInfo, StudioError } from '../../../shared/types';
 import { SidebarTabs, type SidebarTabDefinition } from '../../components/SidebarTabs';
 import { InstructionLookupPanel } from '../docs/InstructionLookupPanel';
@@ -8,6 +20,7 @@ import {
   type StrudelSliderArgumentName,
   type StrudelSliderDescriptor,
 } from '../../services/strudel/sliderScanner';
+import type { ExternalSampleGroup } from '../../services/strudel/externalSamplePacks';
 import type { EditorFile } from '../../types/workbench';
 
 type InspectorPanelProps = {
@@ -15,11 +28,13 @@ type InspectorPanelProps = {
   playbackError: StudioError | null;
   activeFile: EditorFile | null;
   sliderValues: Record<string, number>;
+  externalSampleGroups: ExternalSampleGroup[];
   onSliderArgumentChange: (
     slider: StrudelSliderDescriptor,
     argumentName: StrudelSliderArgumentName,
     value: number,
   ) => void;
+  onPreviewSound: (soundName: string, volume: number) => Promise<void>;
   collapsed: boolean;
   onToggleCollapsed: () => void;
 };
@@ -41,27 +56,90 @@ type SlidersPanelProps = {
 
 type SoundsPanelProps = {
   sampleServer: SampleServerInfo | null;
+  externalSampleGroups: ExternalSampleGroup[];
+  onPreviewSound: (soundName: string, volume: number) => Promise<void>;
 };
 
 type SoundGroup = {
+  id: string;
   title: string;
   names: string[];
 };
 
 const builtInSoundGroups: SoundGroup[] = [
   {
+    id: 'built-in-synths',
     title: 'Synths',
     names: ['triangle', 'tri', 'square', 'sqr', 'sawtooth', 'saw', 'sine', 'sin', 'pulse', 'supersaw', 'sbd', 'bytebeat'],
   },
   {
+    id: 'built-in-noise',
     title: 'Noise',
     names: ['white', 'pink', 'brown', 'crackle'],
   },
   {
+    id: 'built-in-utility',
     title: 'Utility',
     names: ['bus', 'one', 'user'],
   },
 ];
+
+type SoundGroupDrawerProps = {
+  id: string;
+  title: string;
+  names: string[];
+  collapsed: boolean;
+  emptyMessage?: string;
+  previewVolume: number;
+  onToggle: (id: string) => void;
+  onPreviewSound: (soundName: string, volume: number) => Promise<void>;
+};
+
+const SoundGroupDrawer = ({
+  id,
+  title,
+  names,
+  collapsed,
+  emptyMessage,
+  previewVolume,
+  onToggle,
+  onPreviewSound,
+}: SoundGroupDrawerProps): JSX.Element => {
+  return (
+    <article className={`sound-group ${collapsed ? 'is-collapsed' : ''}`}>
+      <button
+        type="button"
+        className="sound-group-heading"
+        onClick={() => onToggle(id)}
+        aria-expanded={!collapsed}
+      >
+        {collapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+        <h3>{title}</h3>
+        <span className="sound-group-count">{names.length}</span>
+      </button>
+
+      {!collapsed ? (
+        names.length > 0 ? (
+          <div className="sound-chip-list">
+            {names.map((name) => (
+              <button
+                type="button"
+                className="sound-chip"
+                key={`${id}-${name}`}
+                onClick={() => void onPreviewSound(name, previewVolume)}
+                title={`Play ${name}`}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="detail-line sound-group-empty">{emptyMessage ?? 'No matching sounds.'}</p>
+        )
+      ) : null}
+    </article>
+  );
+};
 
 const formatSliderNumber = (value: number): string => {
   return Number.isInteger(value) ? String(value) : Number(value.toFixed(4)).toString();
@@ -262,8 +340,10 @@ const SlidersPanel = ({
   );
 };
 
-const SoundsPanel = ({ sampleServer }: SoundsPanelProps): JSX.Element => {
+const SoundsPanel = ({ sampleServer, externalSampleGroups, onPreviewSound }: SoundsPanelProps): JSX.Element => {
   const [query, setQuery] = useState('');
+  const [previewVolume, setPreviewVolume] = useState(0.9);
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [sampleNames, setSampleNames] = useState<string[]>([]);
   const [sampleError, setSampleError] = useState<string | null>(null);
 
@@ -306,6 +386,12 @@ const SoundsPanel = ({ sampleServer }: SoundsPanelProps): JSX.Element => {
       : names;
   };
   const filteredSampleNames = filterNames(sampleNames);
+  const filteredExternalSampleGroups = externalSampleGroups
+    .map((group) => ({ ...group, names: filterNames(group.names) }))
+    .filter((group) => group.names.length > 0);
+  const toggleCollapsedGroup = (id: string): void => {
+    setCollapsedGroups((previous) => ({ ...previous, [id]: !previous[id] }));
+  };
 
   return (
     <section className="sound-browser">
@@ -313,6 +399,23 @@ const SoundsPanel = ({ sampleServer }: SoundsPanelProps): JSX.Element => {
         <AudioWaveform size={16} aria-hidden="true" />
         <h2>Sounds</h2>
       </div>
+
+      <label className="sound-preview-volume">
+        <span>
+          <Volume2 size={15} aria-hidden="true" />
+          Preview volume
+        </span>
+        <output>{Math.round(previewVolume * 100)}%</output>
+        <input
+          type="range"
+          min={0}
+          max={1}
+          step={0.01}
+          value={previewVolume}
+          onChange={(event) => setPreviewVolume(Number(event.currentTarget.value))}
+          aria-label="Sound preview volume"
+        />
+      </label>
 
       <label className="lookup-search">
         <Search size={15} aria-hidden="true" />
@@ -331,42 +434,42 @@ const SoundsPanel = ({ sampleServer }: SoundsPanelProps): JSX.Element => {
         }
 
         return (
-          <article className="sound-group" key={group.title}>
-            <div className="sound-group-heading">
-              <h3>{group.title}</h3>
-              <span>{names.length}</span>
-            </div>
-            <div className="sound-chip-list">
-              {names.map((name) => (
-                <code className="sound-chip" key={`${group.title}-${name}`}>
-                  {name}
-                </code>
-              ))}
-            </div>
-          </article>
+          <SoundGroupDrawer
+            key={group.id}
+            id={group.id}
+            title={group.title}
+            names={names}
+            collapsed={Boolean(collapsedGroups[group.id])}
+            previewVolume={previewVolume}
+            onToggle={toggleCollapsedGroup}
+            onPreviewSound={onPreviewSound}
+          />
         );
       })}
 
-      <article className="sound-group">
-        <div className="sound-group-heading">
-          <h3>Project Samples</h3>
-          <span>{filteredSampleNames.length}</span>
-        </div>
-        {sampleError ? <p className="detail-line">{sampleError}</p> : null}
-        {!sampleError && sampleServer && filteredSampleNames.length > 0 ? (
-          <div className="sound-chip-list">
-            {filteredSampleNames.map((name) => (
-              <code className="sound-chip" key={`sample-${name}`}>
-                {name}
-              </code>
-            ))}
-          </div>
-        ) : null}
-        {!sampleError && sampleServer && filteredSampleNames.length === 0 ? (
-          <p className="detail-line">No matching local samples.</p>
-        ) : null}
-        {!sampleError && !sampleServer ? <p className="detail-line">No local samples folder.</p> : null}
-      </article>
+      <SoundGroupDrawer
+        id="project-samples"
+        title="Project Samples"
+        names={sampleError ? [] : filteredSampleNames}
+        collapsed={Boolean(collapsedGroups['project-samples'])}
+        emptyMessage={sampleError ?? (sampleServer ? 'No matching local samples.' : 'No local samples folder.')}
+        previewVolume={previewVolume}
+        onToggle={toggleCollapsedGroup}
+        onPreviewSound={onPreviewSound}
+      />
+
+      {filteredExternalSampleGroups.map((group) => (
+        <SoundGroupDrawer
+          key={`external-${group.id}`}
+          id={`external-${group.id}`}
+          title={group.title}
+          names={group.names}
+          collapsed={Boolean(collapsedGroups[`external-${group.id}`])}
+          previewVolume={previewVolume}
+          onToggle={toggleCollapsedGroup}
+          onPreviewSound={onPreviewSound}
+        />
+      ))}
     </section>
   );
 };
@@ -376,7 +479,9 @@ export const InspectorPanel = ({
   playbackError,
   activeFile,
   sliderValues,
+  externalSampleGroups,
   onSliderArgumentChange,
+  onPreviewSound,
   collapsed,
   onToggleCollapsed,
 }: InspectorPanelProps): JSX.Element => {
@@ -403,7 +508,13 @@ export const InspectorPanel = ({
       id: 'sounds',
       label: 'Sounds',
       icon: <AudioWaveform size={15} aria-hidden="true" />,
-      content: <SoundsPanel sampleServer={sampleServer} />,
+      content: (
+        <SoundsPanel
+          sampleServer={sampleServer}
+          externalSampleGroups={externalSampleGroups}
+          onPreviewSound={onPreviewSound}
+        />
+      ),
     },
     {
       id: 'instructions',

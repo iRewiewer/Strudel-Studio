@@ -1,6 +1,9 @@
 import type {
   CreateFileRequest,
+  AddPluginSourceRequest,
+  DeletePluginRequest,
   DeleteThemeRequest,
+  PluginScriptBundle,
   ProjectSessionSnapshot,
   ProjectSnapshot,
   ReadFileRequest,
@@ -9,6 +12,7 @@ import type {
   SaveThemeRequest,
   SaveThemeResult,
   SaveWorkspaceRequest,
+  StudioPluginSummary,
   StudioThemeSummary,
   WorkspaceSnapshot,
 } from './types';
@@ -32,6 +36,13 @@ export type StudioApi = {
   deleteTheme: (request: DeleteThemeRequest) => Promise<{ themes: StudioThemeSummary[]; themesDirectory: string }>;
   revealThemesDirectory: () => Promise<void>;
   listSystemFonts: () => Promise<string[]>;
+  listPlugins: () => Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string }>;
+  addPluginSource: (request: AddPluginSourceRequest) => Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string }>;
+  importPluginFolder: () => Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string } | null>;
+  deletePlugin: (request: DeletePluginRequest) => Promise<{ plugins: StudioPluginSummary[]; pluginsDirectory: string }>;
+  readPluginScriptBundle: (pluginPath: string) => Promise<PluginScriptBundle>;
+  revealPluginsDirectory: () => Promise<void>;
+  revealExternalSamplesDirectory: () => Promise<void>;
 };
 
 export const ipcChannels = {
@@ -53,4 +64,11 @@ export const ipcChannels = {
   deleteTheme: 'studio:delete-theme',
   revealThemesDirectory: 'studio:reveal-themes-directory',
   listSystemFonts: 'studio:list-system-fonts',
+  listPlugins: 'studio:list-plugins',
+  addPluginSource: 'studio:add-plugin-source',
+  importPluginFolder: 'studio:import-plugin-folder',
+  deletePlugin: 'studio:delete-plugin',
+  readPluginScriptBundle: 'studio:read-plugin-script-bundle',
+  revealPluginsDirectory: 'studio:reveal-plugins-directory',
+  revealExternalSamplesDirectory: 'studio:reveal-external-samples-directory',
 } as const;

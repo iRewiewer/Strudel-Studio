@@ -5,6 +5,7 @@ import type {
   ProjectSessionSnapshot,
   ProjectSnapshot,
   RecentProject,
+  StudioPluginSummary,
   StudioTheme,
   WorkspaceEditorPanelNode,
 } from '../../shared/types';
@@ -12,21 +13,41 @@ import { defaultStudioTheme } from '../../shared/theme';
 import { EditorPane } from '../features/editor/EditorPane';
 import { FileExplorer } from '../features/files/FileExplorer';
 import { PlaybackControls } from '../features/playback/PlaybackControls';
+import { PluginManagerModal, type PluginLoadState } from '../features/plugins/PluginManagerModal';
+import { ExternalSamplesModal } from '../features/samples/ExternalSamplesModal';
 import { InspectorPanel } from '../features/sidebar-right/InspectorPanel';
 import { ThemeSelectorModal } from '../features/themes/ThemeSelectorModal';
 import { WelcomeScreen } from '../features/workspace/WelcomeScreen';
 import {
   createStrudelFile,
+  addStudioPluginSource,
+  deleteStudioPlugin,
+  importStudioPluginFolder,
+  listStudioPlugins,
   listRecentProjects,
   newProjectFolder,
   openProjectFolder,
   openRecentProject,
   readProjectFile,
   removeRecentProject,
+  readStudioPluginScriptBundle,
+  revealExternalSamplesDirectory,
+  revealStudioPluginsDirectory,
   saveProjectFile,
   saveWorkspaceFile,
 } from '../services/filesystem/studioFilesystem';
 import { StrudelPlaybackService } from '../services/strudel/StrudelPlaybackService';
+import {
+  createCustomExternalSamplePack,
+  externalSamplePacks,
+  fetchExternalSamplePackIndex,
+  getExternalSampleLoadSources,
+  normalizeExternalSampleSource,
+  prefetchExternalSampleFiles,
+  type ExternalSampleGroup,
+  type ExternalSamplePack,
+  type ExternalSamplePackState,
+} from '../services/strudel/externalSamplePacks';
 import {
   updateStrudelSliderArgument,
   type StrudelSliderArgumentName,
@@ -452,6 +473,14 @@ export const App = (): JSX.Element => {
   const [playback, setPlayback] = useState<PlaybackState>(stoppedPlaybackState);
   const [activeTheme, setActiveTheme] = useState<StudioTheme>(() => loadStoredTheme());
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
+  const [externalSamplesOpen, setExternalSamplesOpen] = useState(false);
+  const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+  const [customExternalSamplePacks, setCustomExternalSamplePacks] = useState<ExternalSamplePack[]>([]);
+  const [hiddenExternalSamplePackIds, setHiddenExternalSamplePackIds] = useState<Set<string>>(() => new Set());
+  const [externalSamplePackStates, setExternalSamplePackStates] = useState<Record<string, ExternalSamplePackState>>({});
+  const [plugins, setPlugins] = useState<StudioPluginSummary[]>([]);
+  const [pluginsDirectory, setPluginsDirectory] = useState('');
+  const [pluginStates, setPluginStates] = useState<Record<string, PluginLoadState>>({});
 
   const allTrackedFiles = useMemo(() => Object.values(openFilesByPath), [openFilesByPath]);
   const openFiles = useMemo(
@@ -465,6 +494,26 @@ export const App = (): JSX.Element => {
   const dirtyFiles = useMemo(
     () => allTrackedFiles.filter((file) => file.dirty),
     [allTrackedFiles],
+  );
+  const externalSampleGroups = useMemo<ExternalSampleGroup[]>(
+    () =>
+      Object.values(externalSamplePackStates)
+        .filter((pack): pack is ExternalSamplePackState & { status: 'loaded' } => pack.status === 'loaded')
+        .map((pack) => ({
+          id: pack.id,
+          title: pack.title,
+          source: pack.source,
+          names: pack.names,
+          files: pack.files,
+        })),
+    [externalSamplePackStates],
+  );
+  const availableExternalSamplePacks = useMemo(
+    () => [
+      ...externalSamplePacks.filter((pack) => !hiddenExternalSamplePackIds.has(pack.id)),
+      ...customExternalSamplePacks,
+    ],
+    [customExternalSamplePacks, hiddenExternalSamplePackIds],
   );
   const activePanel = findPanelLeaf(editorLayout, activePanelId) ?? findFirstPanelLeaf(editorLayout);
   const activeFilePath = activePanel?.filePath ?? null;
@@ -1020,15 +1069,351 @@ export const App = (): JSX.Element => {
   }, [includedFiles, setPlayingState, sliderValuesById]);
 
   const handleStop = useCallback(async (): Promise<void> => {
-    await playbackService.current.stop();
+    await playbackService.current.panic();
     lastEvaluatedPlaybackSignature.current = '';
     setPlayback(stoppedPlaybackState);
   }, []);
 
-  const handlePanic = useCallback(async (): Promise<void> => {
-    await playbackService.current.panic();
-    lastEvaluatedPlaybackSignature.current = '';
-    setPlayback(stoppedPlaybackState);
+  const handlePreviewSound = useCallback(async (soundName: string, volume: number): Promise<void> => {
+    try {
+      await playbackService.current.previewSound(soundName, volume);
+      lastEvaluatedPlaybackSignature.current = '';
+      setPlayback(stoppedPlaybackState);
+      setOperationError(null);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const handleLoadExternalSamplePack = useCallback(async (pack: ExternalSamplePack): Promise<void> => {
+    setExternalSamplePackStates((previous) => ({
+      ...previous,
+      [pack.id]: {
+        id: pack.id,
+        title: pack.name,
+        source: pack.source,
+        names: previous[pack.id]?.names ?? [],
+        files: previous[pack.id]?.files ?? [],
+        status: 'loading',
+        error: null,
+        cacheStatus: previous[pack.id]?.cacheStatus ?? 'idle',
+        cachedFileCount: previous[pack.id]?.cachedFileCount ?? 0,
+        cacheError: null,
+      },
+    }));
+
+    try {
+      const sampleIndex = await fetchExternalSamplePackIndex(pack);
+      let loadError: unknown = null;
+      for (const source of getExternalSampleLoadSources(pack.source)) {
+        try {
+          await playbackService.current.loadExternalSamples(source, pack.source);
+          loadError = null;
+          break;
+        } catch (error) {
+          loadError = error;
+        }
+      }
+      if (loadError) {
+        throw loadError;
+      }
+      setExternalSamplePackStates((previous) => ({
+        ...previous,
+        [pack.id]: {
+          id: pack.id,
+          title: pack.name,
+          source: pack.source,
+          names: sampleIndex.names,
+          files: sampleIndex.files,
+          status: 'loaded',
+          error: null,
+          cacheStatus: 'idle',
+          cachedFileCount: 0,
+          cacheError: null,
+        },
+      }));
+      setOperationError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setExternalSamplePackStates((previous) => ({
+        ...previous,
+        [pack.id]: {
+          id: pack.id,
+          title: pack.name,
+          source: pack.source,
+          names: previous[pack.id]?.names ?? [],
+          files: previous[pack.id]?.files ?? [],
+          status: 'error',
+          error: message,
+          cacheStatus: previous[pack.id]?.cacheStatus ?? 'idle',
+          cachedFileCount: previous[pack.id]?.cachedFileCount ?? 0,
+          cacheError: previous[pack.id]?.cacheError ?? null,
+        },
+      }));
+      setOperationError(message);
+    }
+  }, []);
+
+  const handleAddExternalSamplePack = useCallback(
+    async (source: string, name: string): Promise<void> => {
+      const normalizedSource = normalizeExternalSampleSource(source);
+      if (!normalizedSource) {
+        throw new Error('Enter an external sample source.');
+      }
+
+      const existingPack = [...externalSamplePacks, ...customExternalSamplePacks]
+        .find((pack) => normalizeExternalSampleSource(pack.source) === normalizedSource);
+      const pack = existingPack ?? createCustomExternalSamplePack(normalizedSource, name);
+
+      if (!existingPack) {
+        setCustomExternalSamplePacks((previous) => [...previous, pack]);
+      } else if (!existingPack.custom) {
+        setHiddenExternalSamplePackIds((previous) => {
+          const next = new Set(previous);
+          next.delete(existingPack.id);
+          return next;
+        });
+      }
+
+      await handleLoadExternalSamplePack(pack);
+    },
+    [customExternalSamplePacks, handleLoadExternalSamplePack],
+  );
+
+  const handleDeleteExternalSamplePack = useCallback((pack: ExternalSamplePack): void => {
+    playbackService.current.forgetExternalSamples(pack.source);
+    setExternalSamplePackStates((previous) => {
+      const next = { ...previous };
+      delete next[pack.id];
+      return next;
+    });
+
+    if (pack.custom) {
+      setCustomExternalSamplePacks((previous) => previous.filter((item) => item.id !== pack.id));
+    } else {
+      setHiddenExternalSamplePackIds((previous) => new Set(previous).add(pack.id));
+    }
+  }, []);
+
+  const handleUnloadExternalSamplePack = useCallback((pack: ExternalSamplePack): void => {
+    playbackService.current.forgetExternalSamples(pack.source);
+    setExternalSamplePackStates((previous) => {
+      const next = { ...previous };
+      delete next[pack.id];
+      return next;
+    });
+  }, []);
+
+  const handleCacheExternalSamplePack = useCallback(async (pack: ExternalSamplePack): Promise<void> => {
+    const currentPackState = externalSamplePackStates[pack.id];
+    if (!currentPackState || currentPackState.status !== 'loaded') {
+      return;
+    }
+
+    if (currentPackState.files.length === 0) {
+      setOperationError('No audio files were listed for this external sample pack.');
+      return;
+    }
+
+    setExternalSamplePackStates((previous) => {
+      const existing = previous[pack.id];
+      if (!existing || existing.status !== 'loaded') {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        [pack.id]: {
+          ...existing,
+          cacheStatus: 'caching',
+          cachedFileCount: 0,
+          cacheError: null,
+        },
+      };
+    });
+
+    try {
+      await prefetchExternalSampleFiles(currentPackState.files, (cachedFileCount) => {
+        setExternalSamplePackStates((previous) => {
+          const existing = previous[pack.id];
+          if (!existing || existing.status !== 'loaded') {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [pack.id]: {
+              ...existing,
+              cacheStatus: 'caching',
+              cachedFileCount,
+            },
+          };
+        });
+      });
+
+      setExternalSamplePackStates((previous) => {
+        const existing = previous[pack.id];
+        if (!existing || existing.status !== 'loaded') {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [pack.id]: {
+            ...existing,
+            cacheStatus: 'cached',
+            cachedFileCount: currentPackState.files.length,
+            cacheError: null,
+          },
+        };
+      });
+      setOperationError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setExternalSamplePackStates((previous) => {
+        const existing = previous[pack.id];
+        if (!existing || existing.status !== 'loaded') {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [pack.id]: {
+            ...existing,
+            cacheStatus: 'error',
+            cacheError: message,
+          },
+        };
+      });
+      setOperationError(message);
+    }
+  }, [externalSamplePackStates]);
+
+  const refreshPlugins = useCallback(async (): Promise<StudioPluginSummary[]> => {
+    const result = await listStudioPlugins();
+    setPlugins(result.plugins);
+    setPluginsDirectory(result.pluginsDirectory);
+    setPluginStates((previous) => {
+      const availablePluginIds = new Set(result.plugins.map((plugin) => plugin.id));
+      return Object.fromEntries(
+        Object.entries(previous).filter(([pluginId]) => availablePluginIds.has(pluginId)),
+      );
+    });
+    return result.plugins;
+  }, []);
+
+  const handleOpenPluginManager = useCallback((): void => {
+    setPluginManagerOpen(true);
+    void refreshPlugins().catch((error) => {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    });
+  }, [refreshPlugins]);
+
+  const handleLoadPlugin = useCallback(async (plugin: StudioPluginSummary): Promise<void> => {
+    setPluginStates((previous) => ({
+      ...previous,
+      [plugin.id]: { status: 'loading', error: null },
+    }));
+
+    try {
+      const bundle = await readStudioPluginScriptBundle(plugin.path);
+      await playbackService.current.loadPlugin(plugin.id, bundle.code);
+      setPluginStates((previous) => ({
+        ...previous,
+        [plugin.id]: { status: 'loaded', error: null },
+      }));
+      setOperationError(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPluginStates((previous) => ({
+        ...previous,
+        [plugin.id]: { status: 'error', error: message },
+      }));
+      setOperationError(message);
+    }
+  }, []);
+
+  const handleUnloadPlugin = useCallback((plugin: StudioPluginSummary): void => {
+    playbackService.current.unloadPlugin(plugin.id);
+    setPluginStates((previous) => ({
+      ...previous,
+      [plugin.id]: { status: 'idle', error: null },
+    }));
+  }, []);
+
+  const handleAddPlugin = useCallback(
+    async (source: string, name: string): Promise<void> => {
+      const previousPluginIds = new Set(plugins.map((plugin) => plugin.id));
+      const result = await addStudioPluginSource({ source, name });
+      setPlugins(result.plugins);
+      setPluginsDirectory(result.pluginsDirectory);
+
+      const addedPlugin = result.plugins.find((plugin) => !previousPluginIds.has(plugin.id))
+        ?? result.plugins.find((plugin) => plugin.source === source.trim());
+      if (addedPlugin) {
+        await handleLoadPlugin(addedPlugin);
+      }
+    },
+    [handleLoadPlugin, plugins],
+  );
+
+  const handleImportPluginFolder = useCallback(async (): Promise<void> => {
+    const previousPluginIds = new Set(plugins.map((plugin) => plugin.id));
+    const result = await importStudioPluginFolder();
+    if (!result) {
+      return;
+    }
+
+    setPlugins(result.plugins);
+    setPluginsDirectory(result.pluginsDirectory);
+
+    const addedPlugin = result.plugins.find((plugin) => !previousPluginIds.has(plugin.id));
+    if (addedPlugin) {
+      await handleLoadPlugin(addedPlugin);
+    }
+  }, [handleLoadPlugin, plugins]);
+
+  const handleDeletePlugin = useCallback(async (plugin: StudioPluginSummary): Promise<void> => {
+    if (!window.confirm(`Remove "${plugin.name}"?`)) {
+      return;
+    }
+
+    playbackService.current.unloadPlugin(plugin.id);
+    const result = await deleteStudioPlugin({ pluginPath: plugin.path });
+    setPlugins(result.plugins);
+    setPluginsDirectory(result.pluginsDirectory);
+    setPluginStates((previous) => {
+      const next = { ...previous };
+      delete next[plugin.id];
+      return next;
+    });
+  }, []);
+
+  const handleRefreshPlugins = useCallback(async (): Promise<void> => {
+    try {
+      await refreshPlugins();
+      setOperationError(null);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    }
+  }, [refreshPlugins]);
+
+  const handleRevealPluginsDirectory = useCallback(async (): Promise<void> => {
+    try {
+      await revealStudioPluginsDirectory();
+      setOperationError(null);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    }
+  }, []);
+
+  const handleRevealExternalSamplesDirectory = useCallback(async (): Promise<void> => {
+    try {
+      await revealExternalSamplesDirectory();
+      setOperationError(null);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    }
   }, []);
 
   const livePlaybackFiles = useMemo(() => {
@@ -1189,12 +1574,13 @@ export const App = (): JSX.Element => {
         onPlayActive={handlePlayActive}
         onPlayAll={handlePlayAll}
         onStop={handleStop}
-        onPanic={handlePanic}
         onSaveActive={handleSaveActive}
         onSaveAll={handleSaveAll}
         onGoHome={handleGoHome}
         onNewProject={handleNewProject}
         onOpenProject={handleOpenProject}
+        onOpenExternalSamples={() => setExternalSamplesOpen(true)}
+        onOpenPluginManager={handleOpenPluginManager}
         onOpenThemeSelector={() => setThemeSelectorOpen(true)}
         onSplitVertical={() => handleSplit('vertical')}
         onSplitHorizontal={() => handleSplit('horizontal')}
@@ -1259,7 +1645,9 @@ export const App = (): JSX.Element => {
           playbackError={playback.error}
           activeFile={activeFile}
           sliderValues={sliderValuesById}
+          externalSampleGroups={externalSampleGroups}
           onSliderArgumentChange={handleSliderArgumentChange}
+          onPreviewSound={handlePreviewSound}
           collapsed={rightSidebarCollapsed}
           onToggleCollapsed={() => setRightSidebarCollapsed((previous) => !previous)}
         />
@@ -1270,6 +1658,34 @@ export const App = (): JSX.Element => {
         activeTheme={activeTheme}
         onApplyTheme={setActiveTheme}
         onClose={() => setThemeSelectorOpen(false)}
+      />
+
+      <ExternalSamplesModal
+        open={externalSamplesOpen}
+        packs={availableExternalSamplePacks}
+        packStates={externalSamplePackStates}
+        onLoadPack={handleLoadExternalSamplePack}
+        onAddPack={handleAddExternalSamplePack}
+        onDeletePack={handleDeleteExternalSamplePack}
+        onUnloadPack={handleUnloadExternalSamplePack}
+        onCachePack={handleCacheExternalSamplePack}
+        onRevealSamplesDirectory={handleRevealExternalSamplesDirectory}
+        onClose={() => setExternalSamplesOpen(false)}
+      />
+
+      <PluginManagerModal
+        open={pluginManagerOpen}
+        plugins={plugins}
+        pluginStates={pluginStates}
+        pluginsDirectory={pluginsDirectory}
+        onAddPlugin={handleAddPlugin}
+        onImportPluginFolder={handleImportPluginFolder}
+        onDeletePlugin={handleDeletePlugin}
+        onLoadPlugin={handleLoadPlugin}
+        onUnloadPlugin={handleUnloadPlugin}
+        onRefreshPlugins={handleRefreshPlugins}
+        onRevealPluginsDirectory={handleRevealPluginsDirectory}
+        onClose={() => setPluginManagerOpen(false)}
       />
 
       {operationError ? <div className="toast-error">{operationError}</div> : null}

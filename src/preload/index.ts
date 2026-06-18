@@ -24,6 +24,13 @@ const api: StudioApi = {
   deleteTheme: (request) => ipcRenderer.invoke(ipcChannels.deleteTheme, request),
   revealThemesDirectory: () => ipcRenderer.invoke(ipcChannels.revealThemesDirectory),
   listSystemFonts: () => ipcRenderer.invoke(ipcChannels.listSystemFonts),
+  listPlugins: () => ipcRenderer.invoke(ipcChannels.listPlugins),
+  addPluginSource: (request) => ipcRenderer.invoke(ipcChannels.addPluginSource, request),
+  importPluginFolder: () => ipcRenderer.invoke(ipcChannels.importPluginFolder),
+  deletePlugin: (request) => ipcRenderer.invoke(ipcChannels.deletePlugin, request),
+  readPluginScriptBundle: (pluginPath) => ipcRenderer.invoke(ipcChannels.readPluginScriptBundle, pluginPath),
+  revealPluginsDirectory: () => ipcRenderer.invoke(ipcChannels.revealPluginsDirectory),
+  revealExternalSamplesDirectory: () => ipcRenderer.invoke(ipcChannels.revealExternalSamplesDirectory),
 };
 
 contextBridge.exposeInMainWorld('studio', api);

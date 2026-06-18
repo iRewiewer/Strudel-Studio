@@ -63,6 +63,7 @@ export type ThemeColorKey =
   | 'background'
   | 'surface'
   | 'panel'
+  | 'recentPanel'
   | 'border'
   | 'primary'
   | 'primaryText'
@@ -107,6 +108,32 @@ export type SaveThemeResult = {
 
 export type DeleteThemeRequest = {
   themePath: string;
+};
+
+export type StudioPluginSummary = {
+  id: string;
+  name: string;
+  path: string;
+  source: string | null;
+  description: string;
+  author: string;
+  pluginVersion: string;
+  scripts: string[];
+};
+
+export type AddPluginSourceRequest = {
+  source: string;
+  name?: string;
+};
+
+export type DeletePluginRequest = {
+  pluginPath: string;
+};
+
+export type PluginScriptBundle = {
+  pluginId: string;
+  scriptNames: string[];
+  code: string;
 };
 
 export type WorkspaceEditorPanelLeaf = {

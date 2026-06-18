@@ -21,9 +21,29 @@ type StrudelWindow = Window & {
   sliderWithID?: (id: string, value: number, min?: number, max?: number, step?: number) => number;
 };
 
-type WidgetOptions = Record<string, unknown>;
-
 type PatternPrototype = Record<string, (...args: unknown[]) => unknown>;
+
+const studioRootId = 'root';
+const visualWidgetMethods = [
+  'pianoroll',
+  '_pianoroll',
+  'punchcard',
+  '_punchcard',
+  'wordfall',
+  '_wordfall',
+  'pitchwheel',
+  '_pitchwheel',
+  'spiral',
+  '_spiral',
+  'scope',
+  '_scope',
+  'tscope',
+  '_tscope',
+  'fscope',
+  '_fscope',
+  'spectrum',
+  '_spectrum',
+];
 
 export type PlaybackResult =
   | {
@@ -41,6 +61,9 @@ export class StrudelPlaybackService {
   private audioReadyPromise: Promise<void> | null = null;
   private sampleManifestUrl: string | null = null;
   private loadedSampleManifestUrl: string | null = null;
+  private previewStopTimeout: number | null = null;
+  private loadedExternalSampleSources = new Set<string>();
+  private loadedPluginScripts = new Map<string, string>();
   private sliderValues = new Map<string, number>();
 
   setSampleManifestUrl(manifestUrl: string | null): void {
@@ -59,6 +82,7 @@ export class StrudelPlaybackService {
   }
 
   async playFiles(files: PlayableStrudelFile[], restart: boolean): Promise<PlaybackResult> {
+    this.clearPreviewStopTimeout();
     const program = combineStrudelFiles(files);
     await this.ensureInitialized();
     await this.ensureAudioReady();
@@ -71,8 +95,10 @@ export class StrudelPlaybackService {
 
     try {
       await evaluate(program.code, true);
+      this.cleanupStrudelDomArtifacts();
       return { ok: true, program };
     } catch (error) {
+      this.cleanupStrudelDomArtifacts();
       return {
         ok: false,
         program,
@@ -82,17 +108,76 @@ export class StrudelPlaybackService {
   }
 
   async stop(): Promise<void> {
+    this.clearPreviewStopTimeout();
     if (!this.initPromise) {
       return;
     }
 
     await this.initPromise;
     await Promise.resolve(hush());
+    this.cleanupStrudelDomArtifacts();
   }
 
   async panic(): Promise<void> {
     await this.stop();
     resetGlobalEffects();
+  }
+
+  async previewSound(soundName: string, volume = 0.9): Promise<void> {
+    const trimmedName = soundName.trim();
+    if (!trimmedName) {
+      return;
+    }
+
+    const previewGain = Math.min(Math.max(volume, 0), 1);
+    this.clearPreviewStopTimeout();
+    await this.ensureInitialized();
+    await this.ensureAudioReady();
+    await this.stop();
+    await this.loadProjectSamples();
+    try {
+      await evaluate(`s(${JSON.stringify(trimmedName)}).gain(${previewGain})`, true);
+    } finally {
+      this.cleanupStrudelDomArtifacts();
+    }
+
+    this.previewStopTimeout = window.setTimeout(() => {
+      this.previewStopTimeout = null;
+      void this.panic();
+    }, 900);
+  }
+
+  async loadExternalSamples(source: string, cacheKey = source): Promise<void> {
+    if (this.loadedExternalSampleSources.has(cacheKey)) {
+      return;
+    }
+
+    await this.ensureInitialized();
+    await this.ensureAudioReady();
+    await Promise.resolve(samples(source));
+    this.loadedExternalSampleSources.add(cacheKey);
+  }
+
+  forgetExternalSamples(source: string): void {
+    this.loadedExternalSampleSources.delete(source);
+  }
+
+  async loadPlugin(pluginId: string, code: string): Promise<void> {
+    if (this.loadedPluginScripts.has(pluginId)) {
+      return;
+    }
+
+    await this.ensureInitialized();
+    try {
+      await Promise.resolve(evaluate(code, false));
+    } finally {
+      this.cleanupStrudelDomArtifacts();
+    }
+    this.loadedPluginScripts.set(pluginId, code);
+  }
+
+  unloadPlugin(pluginId: string): void {
+    this.loadedPluginScripts.delete(pluginId);
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -104,13 +189,22 @@ export class StrudelPlaybackService {
           beforeStart: () => this.ensureAudioReady(),
           prebake: async () => {
             await evalScope({ sliderWithID });
-            this.installWidgetAliases();
+            this.disableVisualWidgets();
             await this.loadProjectSamples();
           },
         }),
       ).then(() => undefined);
     }
     await this.initPromise;
+  }
+
+  private clearPreviewStopTimeout(): void {
+    if (this.previewStopTimeout === null) {
+      return;
+    }
+
+    window.clearTimeout(this.previewStopTimeout);
+    this.previewStopTimeout = null;
   }
 
   private async ensureAudioReady(): Promise<void> {
@@ -147,37 +241,24 @@ export class StrudelPlaybackService {
     return clamped;
   };
 
-  private installWidgetAliases(): void {
+  private disableVisualWidgets(): void {
     const prototype = Pattern.prototype as PatternPrototype;
-
-    const aliasWidget = (plainName: string, transformedName: string): void => {
-      const plainMethod = prototype[plainName];
-      if (typeof plainMethod !== 'function' || typeof prototype[transformedName] === 'function') {
-        return;
-      }
-
-      prototype[transformedName] = function widgetAlias(this: unknown, widgetIdOrOptions?: unknown, options?: unknown) {
-        const widgetOptions =
-          typeof widgetIdOrOptions === 'string'
-            ? { ...(isWidgetOptions(options) ? options : {}), id: widgetIdOrOptions }
-            : isWidgetOptions(widgetIdOrOptions)
-              ? widgetIdOrOptions
-              : {};
-        return plainMethod.call(this, widgetOptions);
-      };
+    const passthroughWidget = function passthroughWidget(this: unknown): unknown {
+      return this;
     };
 
-    aliasWidget('pianoroll', '_pianoroll');
-    aliasWidget('punchcard', '_punchcard');
-    aliasWidget('wordfall', '_wordfall');
-    aliasWidget('pitchwheel', '_pitchwheel');
-    aliasWidget('spiral', '_spiral');
-    aliasWidget('scope', '_scope');
-    aliasWidget('tscope', '_tscope');
-    aliasWidget('spectrum', '_spectrum');
+    for (const methodName of visualWidgetMethods) {
+      prototype[methodName] = passthroughWidget;
+    }
+  }
+
+  private cleanupStrudelDomArtifacts(): void {
+    for (const child of Array.from(document.body.children)) {
+      if (child.id === studioRootId) {
+        continue;
+      }
+
+      child.remove();
+    }
   }
 }
-
-const isWidgetOptions = (value: unknown): value is WidgetOptions => {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-};

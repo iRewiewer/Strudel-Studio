@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, FolderOpen, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
+import { Copy, Eye, EyeOff, FolderOpen, Plus, RefreshCw, Save, Search, Trash2, X } from 'lucide-react';
 import type {
   StudioTheme,
   StudioThemeSummary,
@@ -7,7 +7,7 @@ import type {
   ThemeFontKey,
   ThemeFontSizeKey,
 } from '../../../shared/types';
-import { defaultStudioTheme, themeColorKeys, themeFontKeys } from '../../../shared/theme';
+import { builtInStudioThemes, defaultStudioTheme, themeColorKeys, themeFontKeys } from '../../../shared/theme';
 import {
   deleteStudioTheme,
   importStudioThemeFile,
@@ -24,12 +24,26 @@ type ThemeSelectorModalProps = {
   onClose: () => void;
 };
 
-const defaultThemeSummary: StudioThemeSummary = {
-  id: 'studio-default',
-  name: defaultStudioTheme.name,
-  path: null,
-  theme: defaultStudioTheme,
+const toBuiltInThemeId = (theme: StudioTheme, index: number): string => {
+  if (index === 0) {
+    return 'studio-default';
+  }
+
+  return `studio-built-in-${theme.name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')}`;
 };
+
+const builtInThemeSummaries: StudioThemeSummary[] = builtInStudioThemes.map((theme, index) => ({
+  id: toBuiltInThemeId(theme, index),
+  name: theme.name,
+  path: null,
+  theme,
+}));
+const builtInThemeIds = new Set(builtInThemeSummaries.map((theme) => theme.id));
+const defaultThemeSummary: StudioThemeSummary = builtInThemeSummaries[0]!;
 
 const unsavedThemeId = 'new-theme';
 
@@ -37,6 +51,7 @@ const themeColorLabels: Record<ThemeColorKey, string> = {
   background: 'Background',
   surface: 'Surface',
   panel: 'Panel',
+  recentPanel: 'Recent panel',
   border: 'Border',
   primary: 'Primary',
   primaryText: 'Primary text',
@@ -97,12 +112,31 @@ const createNewTheme = (): StudioTheme => ({
 
 const getThemeListDetail = (theme: StudioThemeSummary): string => {
   if (!theme.path && theme.id !== unsavedThemeId) {
-    return 'Build-In';
+    return 'Built-In';
   }
 
   const author = normalizeThemeAuthor(theme.theme.author);
   const version = normalizeThemeVersion(theme.theme.themeVersion);
   return `${author} · v${version}`;
+};
+
+const isBuiltInThemeSummary = (theme: StudioThemeSummary): boolean => builtInThemeIds.has(theme.id);
+
+const mergeThemeSummaries = (
+  savedThemes: StudioThemeSummary[],
+  unsavedTheme: StudioThemeSummary | null,
+): StudioThemeSummary[] => [
+  ...builtInThemeSummaries,
+  ...(unsavedTheme ? [unsavedTheme] : []),
+  ...savedThemes.filter((theme) => theme.id !== unsavedThemeId && !isBuiltInThemeSummary(theme)),
+];
+
+const themeMatches = (theme: StudioTheme, targetTheme: StudioTheme): boolean => {
+  return (
+    theme.name === targetTheme.name &&
+    normalizeThemeAuthor(theme.author) === normalizeThemeAuthor(targetTheme.author) &&
+    normalizeThemeVersion(theme.themeVersion) === normalizeThemeVersion(targetTheme.themeVersion)
+  );
 };
 
 export const ThemeSelectorModal = ({
@@ -111,7 +145,7 @@ export const ThemeSelectorModal = ({
   onApplyTheme,
   onClose,
 }: ThemeSelectorModalProps): JSX.Element | null => {
-  const [themes, setThemes] = useState<StudioThemeSummary[]>([defaultThemeSummary]);
+  const [themes, setThemes] = useState<StudioThemeSummary[]>(builtInThemeSummaries);
   const [selectedThemeId, setSelectedThemeId] = useState(defaultThemeSummary.id);
   const [selectedThemePath, setSelectedThemePath] = useState<string | null>(null);
   const [themesDirectory, setThemesDirectory] = useState('');
@@ -119,6 +153,7 @@ export const ThemeSelectorModal = ({
   const [fonts, setFonts] = useState<string[]>([]);
   const [fontQuery, setFontQuery] = useState('');
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [showBuiltInThemes, setShowBuiltInThemes] = useState(true);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const addMenuRef = useRef<HTMLDivElement>(null);
@@ -144,20 +179,19 @@ export const ThemeSelectorModal = ({
   );
 
   const refreshThemes = useCallback(
-    async (nextSelectedThemeId?: string, fallbackThemeName?: string): Promise<void> => {
+    async (nextSelectedThemeId?: string, fallbackTheme?: StudioTheme): Promise<void> => {
       const result = await listStudioThemes();
       const unsavedTheme = themes.find((theme) => theme.id === unsavedThemeId) ?? null;
-      const nextThemes = [
-        defaultThemeSummary,
-        ...(unsavedTheme ? [unsavedTheme] : []),
-        ...result.themes,
-      ];
+      const nextThemes = mergeThemeSummaries(result.themes, unsavedTheme);
       setThemes(nextThemes);
       setThemesDirectory(result.themesDirectory);
 
       const selected = (nextSelectedThemeId ? nextThemes.find((theme) => theme.id === nextSelectedThemeId) : null)
+        ?? (selectedThemeId !== defaultThemeSummary.id
+          ? nextThemes.find((theme) => theme.id === selectedThemeId)
+          : null)
+        ?? (fallbackTheme ? nextThemes.find((theme) => themeMatches(theme.theme, fallbackTheme)) : null)
         ?? nextThemes.find((theme) => theme.id === selectedThemeId)
-        ?? (fallbackThemeName ? nextThemes.find((theme) => theme.name === fallbackThemeName) : null)
         ?? nextThemes[0];
 
       if (selected) {
@@ -175,7 +209,7 @@ export const ThemeSelectorModal = ({
     setAddMenuOpen(false);
     setFontQuery('');
 
-    void Promise.all([refreshThemes(undefined, activeTheme.name), listSystemFonts()])
+    void Promise.all([refreshThemes(undefined, activeTheme), listSystemFonts()])
       .then(([, fontNames]) => setFonts(fontNames))
       .catch((loadError) => {
         setError(loadError instanceof Error ? loadError.message : String(loadError));
@@ -212,6 +246,28 @@ export const ThemeSelectorModal = ({
     };
   }, [addMenuOpen]);
 
+  useEffect(() => {
+    if (!open) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (addMenuOpen) {
+        setAddMenuOpen(false);
+        return;
+      }
+
+      onClose();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [addMenuOpen, onClose, open]);
+
   const fontOptions = useMemo(() => {
     return [
       ...new Set([
@@ -245,6 +301,9 @@ export const ThemeSelectorModal = ({
   const selectedTheme = useMemo(() => {
     return themes.find((theme) => theme.id === selectedThemeId) ?? null;
   }, [selectedThemeId, themes]);
+  const visibleThemes = useMemo(() => {
+    return showBuiltInThemes ? themes : themes.filter((theme) => !isBuiltInThemeSummary(theme));
+  }, [showBuiltInThemes, themes]);
   const selectedThemeIsBuiltIn = Boolean(selectedTheme && !selectedTheme.path && selectedTheme.id !== unsavedThemeId);
   const canSaveSelectedTheme = !selectedThemeIsBuiltIn;
   const canDeleteSelectedTheme = !selectedThemeIsBuiltIn;
@@ -281,11 +340,7 @@ export const ThemeSelectorModal = ({
       theme: nextTheme,
     };
 
-    setThemes((previous) => [
-      defaultThemeSummary,
-      unsavedTheme,
-      ...previous.filter((theme) => theme.id !== defaultThemeSummary.id && theme.id !== unsavedThemeId),
-    ]);
+    setThemes((previous) => mergeThemeSummaries(previous, unsavedTheme));
     setSelectedThemeId(unsavedThemeId);
     setSelectedThemePath(null);
     applyDraft(nextTheme);
@@ -317,7 +372,7 @@ export const ThemeSelectorModal = ({
 
   const handleRefreshThemes = useCallback(async (): Promise<void> => {
     try {
-      await refreshThemes(selectedThemeId, draftTheme.name);
+      await refreshThemes(selectedThemeId, draftTheme);
       setStatus('Theme list refreshed');
       setError(null);
     } catch (refreshError) {
@@ -328,17 +383,10 @@ export const ThemeSelectorModal = ({
   const handleSavedTheme = useCallback(
     (theme: StudioThemeSummary): void => {
       setThemes((previous) => {
-        const withoutSaved = previous.filter((item) => item.id !== theme.id && item.id !== unsavedThemeId);
-        return [defaultThemeSummary, ...withoutSaved.filter((item) => item.id !== defaultThemeSummary.id), theme]
-          .sort((left, right) => {
-            if (left.id === defaultThemeSummary.id) {
-              return -1;
-            }
-            if (right.id === defaultThemeSummary.id) {
-              return 1;
-            }
-            return left.name.localeCompare(right.name);
-          });
+        const withoutSaved = previous.filter(
+          (item) => item.id !== theme.id && item.id !== unsavedThemeId && !isBuiltInThemeSummary(item),
+        );
+        return mergeThemeSummaries([...withoutSaved, theme].sort((left, right) => left.name.localeCompare(right.name)), null);
       });
       setSelectedThemeId(theme.id);
       setSelectedThemePath(theme.path);
@@ -412,7 +460,7 @@ export const ThemeSelectorModal = ({
 
     try {
       const result = await deleteStudioTheme({ themePath: selectedThemePath });
-      setThemes([defaultThemeSummary, ...result.themes]);
+      setThemes(mergeThemeSummaries(result.themes, null));
       setThemesDirectory(result.themesDirectory);
       selectTheme(defaultThemeSummary);
       setStatus(`Deleted ${themeName}`);
@@ -427,7 +475,15 @@ export const ThemeSelectorModal = ({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
       <section className="theme-modal" role="dialog" aria-modal="true" aria-labelledby="theme-modal-title">
         <header className="theme-modal-header">
           <div>
@@ -492,10 +548,22 @@ export const ThemeSelectorModal = ({
               >
                 <RefreshCw size={17} aria-hidden="true" />
               </button>
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setShowBuiltInThemes((previous) => !previous)}
+                title={showBuiltInThemes ? 'Hide built-in themes' : 'Show built-in themes'}
+                aria-pressed={!showBuiltInThemes}
+              >
+                {showBuiltInThemes ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+              </button>
             </div>
 
             <div className="theme-list" role="list">
-              {themes.map((theme) => (
+              {visibleThemes.length === 0 ? (
+                <p className="theme-list-empty">No local themes</p>
+              ) : null}
+              {visibleThemes.map((theme) => (
                 <button
                   type="button"
                   className={`theme-list-item ${selectedThemeId === theme.id ? 'is-active' : ''}`}
@@ -511,21 +579,23 @@ export const ThemeSelectorModal = ({
           </aside>
 
           <main className="theme-editor-panel">
-            <label className="theme-name-field">
-              <span>Name</span>
-              <input
-                value={draftTheme.name}
-                onChange={(event) =>
-                  updateDraftTheme((theme) => ({
-                    ...theme,
-                    name: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <p className="theme-file-path" title={selectedThemePath ?? undefined}>
-              {selectedThemePath ?? (selectedThemeIsBuiltIn ? 'Built-in theme' : 'Not saved to disk')}
-            </p>
+            <div className="theme-title-fields">
+              <label className="theme-name-field">
+                <span>Name</span>
+                <input
+                  value={draftTheme.name}
+                  onChange={(event) =>
+                    updateDraftTheme((theme) => ({
+                      ...theme,
+                      name: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+              <p className="theme-file-path" title={selectedThemePath ?? undefined}>
+                {selectedThemePath ?? (selectedThemeIsBuiltIn ? 'Built-in theme' : 'Not saved to disk')}
+              </p>
+            </div>
 
             <div className="theme-meta-grid">
               <label className="theme-name-field">

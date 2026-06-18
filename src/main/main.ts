@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { registerFilesystemIpc } from './ipc/filesystem';
+import { registerPluginIpc } from './ipc/plugins';
 import { registerThemeIpc } from './ipc/themes';
 import { registerWorkspaceIpc } from './ipc/workspace';
 import { ipcChannels } from '../shared/ipc';
@@ -70,6 +71,7 @@ const createWindow = (): void => {
 app.whenReady().then(() => {
   registerWindowIpc();
   registerFilesystemIpc();
+  registerPluginIpc();
   registerThemeIpc();
   registerWorkspaceIpc();
   createWindow();

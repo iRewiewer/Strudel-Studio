@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  CloudDownload,
   Columns2,
   FilePlus2,
   FolderOpen,
@@ -7,9 +8,9 @@ import {
   Palette,
   PanelTopClose,
   Play,
+  Puzzle,
   Radio,
   Rows2,
-  RotateCcw,
   Save,
   SaveAll,
   Square,
@@ -25,12 +26,13 @@ type PlaybackControlsProps = {
   onPlayActive: () => void;
   onPlayAll: () => void;
   onStop: () => void;
-  onPanic: () => void;
   onSaveActive: () => void;
   onSaveAll: () => void;
   onGoHome: () => void;
   onNewProject: () => void;
   onOpenProject: () => void;
+  onOpenExternalSamples: () => void;
+  onOpenPluginManager: () => void;
   onOpenThemeSelector: () => void;
   onSplitVertical: () => void;
   onSplitHorizontal: () => void;
@@ -50,12 +52,13 @@ export const PlaybackControls = ({
   onPlayActive,
   onPlayAll,
   onStop,
-  onPanic,
   onSaveActive,
   onSaveAll,
   onGoHome,
   onNewProject,
   onOpenProject,
+  onOpenExternalSamples,
+  onOpenPluginManager,
   onOpenThemeSelector,
   onSplitVertical,
   onSplitHorizontal,
@@ -121,6 +124,14 @@ export const PlaybackControls = ({
             <FolderOpen size={15} aria-hidden="true" />
             Open Project
           </button>
+          <button type="button" onClick={() => { closeFileMenu(); onOpenExternalSamples(); }}>
+            <CloudDownload size={15} aria-hidden="true" />
+            External Samples
+          </button>
+          <button type="button" onClick={() => { closeFileMenu(); onOpenPluginManager(); }}>
+            <Puzzle size={15} aria-hidden="true" />
+            Plugins
+          </button>
           <button type="button" onClick={() => { closeFileMenu(); onOpenThemeSelector(); }}>
             <Palette size={15} aria-hidden="true" />
             Theme Selector
@@ -139,9 +150,6 @@ export const PlaybackControls = ({
         </button>
         <button type="button" className="transport-icon" onClick={onStop} disabled={playback.status === 'stopped'} title="Stop">
           <Square size={17} aria-hidden="true" />
-        </button>
-        <button type="button" className="transport-icon danger" onClick={onPanic} title="Panic">
-          <RotateCcw size={17} aria-hidden="true" />
         </button>
       </div>
 

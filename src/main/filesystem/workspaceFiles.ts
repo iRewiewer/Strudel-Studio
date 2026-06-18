@@ -1,4 +1,5 @@
-import { readFile, stat } from 'node:fs/promises';
+import { mkdir, readFile, stat } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import type { ProjectSessionSnapshot, WorkspaceFile, WorkspaceSnapshot } from '../../shared/types';
 import { assertInsideProject, createProjectSnapshot, getWorkspacePath } from './projectFiles';
 
@@ -55,6 +56,8 @@ export const toProjectSession = (snapshot: WorkspaceSnapshot): ProjectSessionSna
 });
 
 export const createEmptyProjectSession = async (projectRoot: string): Promise<ProjectSessionSnapshot> => {
+  await mkdir(join(resolve(projectRoot), 'samples'), { recursive: true });
+
   return {
     project: await createProjectSnapshot(projectRoot),
     openFiles: [],

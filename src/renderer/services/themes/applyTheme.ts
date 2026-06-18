@@ -4,6 +4,7 @@ const cssVariableByColor = {
   background: '--studio-background',
   surface: '--studio-surface',
   panel: '--studio-panel',
+  recentPanel: '--studio-recent-panel',
   border: '--studio-border',
   primary: '--studio-primary',
   primaryText: '--studio-primary-text',
