@@ -9,20 +9,40 @@ import {
   resetGlobalEffects,
   samples,
 } from '@strudel/web';
-import { getCps, getTime } from '@strudel/core';
 import type { StudioError } from '../../../shared/types';
 import {
   combineStrudelFiles,
   type CombinedProgram,
   type PlayableStrudelFile,
+  mapCombinedOffsetRangeToFile,
 } from './programCombiner';
 import { toStudioError } from './errorMapping';
+import type { PlaybackHighlightRange } from './playbackHighlights';
 
 type StrudelWindow = Window & {
   sliderWithID?: (id: string, value: number, min?: number, max?: number, step?: number) => number;
 };
 
 type PatternPrototype = Record<string, (...args: unknown[]) => unknown>;
+type PlaybackHighlightListener = (rangesByPath: Record<string, PlaybackHighlightRange[]>) => void;
+type HapLocation = {
+  start?: unknown;
+  end?: unknown;
+};
+type StrudelHap = {
+  context?: {
+    locations?: HapLocation[];
+  };
+  duration?: number | {
+    valueOf?: () => number;
+  };
+};
+type TriggerablePattern = {
+  onTrigger: (
+    callback: (hap: StrudelHap, currentTime: number, cps: number) => void,
+    dominant?: boolean,
+  ) => unknown;
+};
 
 const studioRootId = 'root';
 const visualWidgetMethods = [
@@ -66,6 +86,15 @@ export class StrudelPlaybackService {
   private loadedExternalSampleSources = new Set<string>();
   private loadedPluginScripts = new Map<string, string>();
   private sliderValues = new Map<string, number>();
+  private activeProgram: CombinedProgram | null = null;
+  private playbackHighlightListener: PlaybackHighlightListener | null = null;
+  private pendingPlaybackHighlights: Record<string, PlaybackHighlightRange[]> = {};
+  private playbackHighlightFlushTimeout: number | null = null;
+  private playbackHighlightClearTimeout: number | null = null;
+
+  setPlaybackHighlightListener(listener: PlaybackHighlightListener | null): void {
+    this.playbackHighlightListener = listener;
+  }
 
   setSampleManifestUrl(manifestUrl: string | null): void {
     this.sampleManifestUrl = manifestUrl;
@@ -93,12 +122,16 @@ export class StrudelPlaybackService {
     }
 
     await this.loadProjectSamples();
+    this.activeProgram = program;
+    this.clearPlaybackHighlights();
 
     try {
       await evaluate(program.code, true);
       this.cleanupStrudelDomArtifacts();
       return { ok: true, program };
     } catch (error) {
+      this.activeProgram = null;
+      this.clearPlaybackHighlights();
       this.cleanupStrudelDomArtifacts();
       return {
         ok: false,
@@ -116,6 +149,8 @@ export class StrudelPlaybackService {
 
     await this.initPromise;
     await Promise.resolve(hush());
+    this.activeProgram = null;
+    this.clearPlaybackHighlights();
     this.cleanupStrudelDomArtifacts();
   }
 
@@ -181,30 +216,13 @@ export class StrudelPlaybackService {
     this.loadedPluginScripts.delete(pluginId);
   }
 
-  getPlaybackTime(): number | null {
-    if (!this.initPromise) {
-      return null;
-    }
-
-    try {
-      const time = Number(getTime());
-      const cps = Number(getCps());
-      if (!Number.isFinite(time)) {
-        return null;
-      }
-
-      return Number.isFinite(cps) && cps > 0 ? time * cps : time;
-    } catch {
-      return null;
-    }
-  }
-
   private async ensureInitialized(): Promise<void> {
     if (!this.initPromise) {
       const sliderWithID = this.sliderWithID;
       (window as StrudelWindow).sliderWithID = sliderWithID;
       this.initPromise = Promise.resolve(
         initStrudel({
+          editPattern: (pattern: unknown) => this.attachPlaybackHighlightTrigger(pattern),
           beforeStart: () => this.ensureAudioReady(),
           prebake: async () => {
             await evalScope({ sliderWithID });
@@ -224,6 +242,118 @@ export class StrudelPlaybackService {
 
     window.clearTimeout(this.previewStopTimeout);
     this.previewStopTimeout = null;
+  }
+
+  private attachPlaybackHighlightTrigger(pattern: unknown): unknown {
+    const triggerablePattern = pattern as Partial<TriggerablePattern>;
+    if (typeof triggerablePattern.onTrigger !== 'function') {
+      return pattern;
+    }
+
+    return triggerablePattern.onTrigger(
+      (hap, _currentTime, cps) => this.queuePlaybackHighlightForHap(hap, cps),
+      false,
+    );
+  }
+
+  private queuePlaybackHighlightForHap(hap: StrudelHap, cps: number): void {
+    if (!this.activeProgram || !this.playbackHighlightListener) {
+      return;
+    }
+
+    const locations = hap.context?.locations ?? [];
+    const rangesByPath: Record<string, PlaybackHighlightRange[]> = {};
+    const seenRanges = new Set<string>();
+
+    for (const location of locations) {
+      const start = Number(location.start);
+      const end = Number(location.end);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+        continue;
+      }
+
+      const mappedRange = mapCombinedOffsetRangeToFile(start, end, this.activeProgram.sections);
+      if (!mappedRange) {
+        continue;
+      }
+
+      const rangeKey = `${mappedRange.relativePath}:${mappedRange.from}:${mappedRange.to}`;
+      if (seenRanges.has(rangeKey)) {
+        continue;
+      }
+
+      seenRanges.add(rangeKey);
+      rangesByPath[mappedRange.relativePath] = [
+        ...(rangesByPath[mappedRange.relativePath] ?? []),
+        { from: mappedRange.from, to: mappedRange.to },
+      ];
+    }
+
+    if (Object.keys(rangesByPath).length === 0) {
+      return;
+    }
+
+    this.queuePlaybackHighlights(rangesByPath, this.getHighlightDurationMs(hap, cps));
+  }
+
+  private queuePlaybackHighlights(
+    rangesByPath: Record<string, PlaybackHighlightRange[]>,
+    clearAfterMs: number,
+  ): void {
+    for (const [relativePath, ranges] of Object.entries(rangesByPath)) {
+      this.pendingPlaybackHighlights[relativePath] = [
+        ...(this.pendingPlaybackHighlights[relativePath] ?? []),
+        ...ranges,
+      ];
+    }
+
+    if (this.playbackHighlightFlushTimeout === null) {
+      this.playbackHighlightFlushTimeout = window.setTimeout(() => {
+        this.playbackHighlightFlushTimeout = null;
+        const nextRanges = this.pendingPlaybackHighlights;
+        this.pendingPlaybackHighlights = {};
+        this.playbackHighlightListener?.(nextRanges);
+      }, 0);
+    }
+
+    if (this.playbackHighlightClearTimeout !== null) {
+      window.clearTimeout(this.playbackHighlightClearTimeout);
+    }
+
+    this.playbackHighlightClearTimeout = window.setTimeout(() => {
+      this.playbackHighlightClearTimeout = null;
+      this.pendingPlaybackHighlights = {};
+      this.playbackHighlightListener?.({});
+    }, clearAfterMs);
+  }
+
+  private clearPlaybackHighlights(): void {
+    if (this.playbackHighlightFlushTimeout !== null) {
+      window.clearTimeout(this.playbackHighlightFlushTimeout);
+      this.playbackHighlightFlushTimeout = null;
+    }
+    if (this.playbackHighlightClearTimeout !== null) {
+      window.clearTimeout(this.playbackHighlightClearTimeout);
+      this.playbackHighlightClearTimeout = null;
+    }
+
+    this.pendingPlaybackHighlights = {};
+    this.playbackHighlightListener?.({});
+  }
+
+  private getHighlightDurationMs(hap: StrudelHap, cps: number): number {
+    try {
+      const rawDuration = typeof hap.duration === 'number'
+        ? hap.duration
+        : Number(hap.duration?.valueOf?.());
+      if (!Number.isFinite(rawDuration) || !Number.isFinite(cps) || cps <= 0) {
+        return 180;
+      }
+
+      return Math.min(Math.max((rawDuration / cps) * 1000, 90), 700);
+    } catch {
+      return 180;
+    }
   }
 
   private async ensureAudioReady(): Promise<void> {

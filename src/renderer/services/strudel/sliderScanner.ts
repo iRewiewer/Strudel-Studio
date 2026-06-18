@@ -23,6 +23,18 @@ export type SourceArgument = {
   text: string;
 };
 
+export type SourceOffsetEdit = {
+  transformedStart: number;
+  transformedEnd: number;
+  originalStart: number;
+  originalEnd: number;
+};
+
+export type StableSliderIdTransform = {
+  source: string;
+  offsetEdits: SourceOffsetEdit[];
+};
+
 export type StrudelSliderArguments = {
   value: SourceArgument;
   min: SourceArgument | null;
@@ -327,9 +339,55 @@ export const updateStrudelSliderArgument = (
   );
 };
 
-export const applyStableSliderIds = (source: string, relativePath: string): string => {
+export const mapStableSliderTransformedOffsetToOriginal = (offset: number, edits: SourceOffsetEdit[]): number => {
+  let accumulatedDelta = 0;
+
+  for (const edit of edits) {
+    if (offset < edit.transformedStart) {
+      break;
+    }
+
+    if (offset < edit.transformedEnd) {
+      const originalLength = edit.originalEnd - edit.originalStart;
+      if (originalLength <= 0) {
+        return edit.originalStart;
+      }
+
+      const relativeOffset = offset - edit.transformedStart;
+      return Math.min(edit.originalEnd, edit.originalStart + Math.min(relativeOffset, originalLength));
+    }
+
+    accumulatedDelta += (edit.transformedEnd - edit.transformedStart) - (edit.originalEnd - edit.originalStart);
+  }
+
+  return offset - accumulatedDelta;
+};
+
+export const applyStableSliderIdsWithMap = (source: string, relativePath: string): StableSliderIdTransform => {
   const sliders = findStrudelSliders(source, relativePath);
   let output = source;
+  const offsetEdits: SourceOffsetEdit[] = [];
+  let accumulatedDelta = 0;
+
+  for (const slider of sliders) {
+    const replacement = 'sliderWithID';
+    offsetEdits.push({
+      transformedStart: slider.callStart + accumulatedDelta,
+      transformedEnd: slider.callStart + accumulatedDelta + replacement.length,
+      originalStart: slider.callStart,
+      originalEnd: slider.callStart + sliderCallee.length,
+    });
+    accumulatedDelta += replacement.length - sliderCallee.length;
+
+    const insertion = `${JSON.stringify(slider.id)}, `;
+    offsetEdits.push({
+      transformedStart: slider.firstArgumentStart + accumulatedDelta,
+      transformedEnd: slider.firstArgumentStart + accumulatedDelta + insertion.length,
+      originalStart: slider.firstArgumentStart,
+      originalEnd: slider.firstArgumentStart,
+    });
+    accumulatedDelta += insertion.length;
+  }
 
   for (const slider of [...sliders].reverse()) {
     output =
@@ -340,5 +398,12 @@ export const applyStableSliderIds = (source: string, relativePath: string): stri
       output.slice(slider.firstArgumentStart);
   }
 
-  return output;
+  return {
+    source: output,
+    offsetEdits,
+  };
+};
+
+export const applyStableSliderIds = (source: string, relativePath: string): string => {
+  return applyStableSliderIdsWithMap(source, relativePath).source;
 };

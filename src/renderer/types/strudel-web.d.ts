@@ -16,6 +16,7 @@ declare module '@strudel/web' {
   export function initAudio(options?: Record<string, unknown>): Promise<void>;
 
   export function initStrudel(options?: {
+    editPattern?: (pattern: unknown) => unknown;
     beforeStart?: () => unknown | Promise<unknown>;
     prebake?: () => unknown | Promise<unknown>;
   }): Promise<unknown> | unknown;
@@ -23,14 +24,4 @@ declare module '@strudel/web' {
   export function resetGlobalEffects(): void;
 
   export function samples(source: string): unknown | Promise<unknown>;
-}
-
-declare module '@strudel/transpiler' {
-  export function transpiler(input: string, options?: Record<string, unknown>): unknown;
-}
-
-declare module '@strudel/core' {
-  export function getCps(): number | undefined;
-
-  export function getTime(): number;
 }

@@ -49,12 +49,7 @@ import {
   type ExternalSamplePack,
   type ExternalSamplePackState,
 } from '../services/strudel/externalSamplePacks';
-import {
-  collectPlaybackHighlightGroups,
-  getActivePlaybackHighlightRanges,
-  type PlaybackHighlightGroup,
-  type PlaybackHighlightRange,
-} from '../services/strudel/playbackHighlights';
+import type { PlaybackHighlightRange } from '../services/strudel/playbackHighlights';
 import {
   updateStrudelSliderArgument,
   type StrudelSliderArgumentName,
@@ -554,6 +549,12 @@ export const App = (): JSX.Element => {
       // Local storage can be unavailable in restricted environments; the live theme still applies.
     }
   }, [activeTheme]);
+
+  useEffect(() => {
+    const service = playbackService.current;
+    service.setPlaybackHighlightListener(setPlaybackHighlightRangesByPath);
+    return () => service.setPlaybackHighlightListener(null);
+  }, []);
 
   useEffect(() => {
     void refreshRecentProjects().catch((error) => {
@@ -1488,48 +1489,11 @@ export const App = (): JSX.Element => {
     return getPlaybackEvaluationSignature(livePlaybackFiles, sliderValuesById);
   }, [livePlaybackFiles, sliderValuesById]);
 
-  const playbackHighlightGroupsByPath = useMemo<Record<string, PlaybackHighlightGroup[]>>(() => {
-    if (playback.status !== 'playing') {
-      return {};
-    }
-
-    return Object.fromEntries(
-      livePlaybackFiles.map((file) => {
-        try {
-          return [file.relativePath, collectPlaybackHighlightGroups(file.content)] as const;
-        } catch {
-          return [file.relativePath, []] as const;
-        }
-      }),
-    );
-  }, [livePlaybackFiles, playback.status]);
-
   useEffect(() => {
     if (playback.status !== 'playing') {
       setPlaybackHighlightRangesByPath({});
-      return undefined;
     }
-
-    const updateHighlights = (): void => {
-      const playbackTime = playbackService.current.getPlaybackTime();
-      if (playbackTime === null) {
-        return;
-      }
-
-      setPlaybackHighlightRangesByPath(
-        Object.fromEntries(
-          Object.entries(playbackHighlightGroupsByPath).map(([relativePath, groups]) => [
-            relativePath,
-            getActivePlaybackHighlightRanges(groups, playbackTime),
-          ]),
-        ),
-      );
-    };
-
-    updateHighlights();
-    const intervalId = window.setInterval(updateHighlights, 90);
-    return () => window.clearInterval(intervalId);
-  }, [playback.status, playbackHighlightGroupsByPath]);
+  }, [playback.status]);
 
   useEffect(() => {
     if (playback.status !== 'playing') {
